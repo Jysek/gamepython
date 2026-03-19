@@ -1,70 +1,60 @@
 """
-Asteroid -- sprite con scia pixel-art e percorso sicuro garantito.
+Asteroid -- sprite with a luminous pixel-art trail and a guaranteed
+safe corridor.
 
-Gli asteroidi cadono dall'alto verso il basso con rotazione e scia di
-particelle luminose.  Le particelle usano ``BLEND_ADD`` per un effetto
-fuoco/calore.
+Asteroids fall from top to bottom with rotation and a particle trail
+rendered with ``BLEND_ADD`` for a fire/heat glow.
 
-Un registro globale ``_active_x`` previene la sovrapposizione orizzontale
-tra asteroidi attivi.  Durante la pioggia, il sistema garantisce che
-esista **sempre** almeno un corridoio di larghezza ``SAFE_CORRIDOR_W``
-pixel libero da asteroidi, cosi' il giocatore ha sempre un percorso
-percorribile.
+A global registry ``_active_x`` prevents horizontal overlap.  During
+asteroid rain events the system guarantees that at least one corridor
+of width ``SAFE_CORRIDOR_W`` pixels remains clear.
 """
 
 import random
-import math
 import pygame
 
 from core.constants import SCREEN_WIDTH, SCREEN_HEIGHT, ASTEROID_SIZE
 from core.assets import Assets
 
 # ---------------------------------------------------------------------------
-# Registro globale posizioni X degli asteroidi attivi.
+# Global registry of active asteroid X positions
 # ---------------------------------------------------------------------------
 _active_x: list[float] = []
-_MIN_GAP = 90   # distanza minima orizzontale tra asteroidi (px)
+_MIN_GAP = 90  # minimum horizontal separation (px)
 
-# Larghezza minima del corridoio sicuro garantito durante la pioggia
+# Minimum width of the guaranteed safe corridor during rain
 SAFE_CORRIDOR_W = 100
 
-# Parametri spritesheet scia
+# Trail spritestrip parameters
 _N_FRAMES = 12
 _FW = 32
 
 
 def _safe_x(w: int) -> float:
-    """Calcola una posizione X sicura per un nuovo asteroide.
+    """Find a safe X position for a new asteroid.
 
-    Tenta un posizionamento casuale che rispetti la distanza minima da
-    tutti gli asteroidi attivi **e** che non ostruisca completamente
-    l'ultimo corridoio sicuro.  Se fallisce dopo 30 tentativi, usa un
-    approccio a colonne scegliendo quella meno popolata.
+    Tries random placement that respects the minimum distance from all
+    active asteroids **and** does not block the largest remaining gap.
+    Falls back to a column-based strategy when random attempts fail.
 
     Args:
-        w: Larghezza dell'asteroide in pixel.
+        w: Asteroid width in pixels.
 
     Returns:
-        Posizione X come float, oppure ``-1`` se il posizionamento
-        bloccherebbe il corridoio sicuro (il chiamante deve scartare
-        lo spawn).
+        X position as float, or -1 if spawning would block the safe
+        corridor (caller should skip the spawn).
     """
     corridor = _find_largest_gap()
 
     for _ in range(30):
         x = random.randint(20, SCREEN_WIDTH - w - 20)
-
-        # Rispetta distanza minima dagli asteroidi attivi
         if not all(abs(x - ox) >= _MIN_GAP for ox in _active_x):
             continue
-
-        # Verifica che il corridoio sicuro non venga chiuso
         if _would_block_corridor(x, w, corridor):
             continue
-
         return float(x)
 
-    # Fallback: suddivisione in colonne
+    # Fallback: pick the least-populated column
     cols = 6
     cw = (SCREEN_WIDTH - 40) // cols
     counts = [0] * cols
@@ -73,33 +63,30 @@ def _safe_x(w: int) -> float:
         if 0 <= c < cols:
             counts[c] += 1
 
-    # Ordina le colonne per numero di asteroidi (meno popolate prima)
     sorted_cols = sorted(range(cols), key=lambda i: counts[i])
-
     for best in sorted_cols:
         x = float(20 + best * cw + random.randint(0, max(0, cw - w)))
         if not _would_block_corridor(x, w, corridor):
             return x
 
-    # Se qualsiasi posizione bloccherebbe il corridoio, rinuncia allo spawn
-    return -1.0
+    return -1.0  # cannot spawn without blocking corridor
 
 
 def _find_largest_gap() -> tuple[float, float]:
-    """Trova il gap orizzontale piu' ampio tra gli asteroidi attivi.
+    """Find the widest horizontal gap between active asteroids.
 
     Returns:
-        Tupla ``(gap_start, gap_end)`` del corridoio piu' largo.
-        Se non ci sono asteroidi, restituisce l'intero schermo.
+        ``(gap_start, gap_end)`` of the largest gap.
     """
     if not _active_x:
         return (0.0, float(SCREEN_WIDTH))
 
-    # Crea intervalli occupati (con margine asteroide)
     half_w = ASTEROID_SIZE / 2
-    intervals = sorted((x - half_w, x + ASTEROID_SIZE + half_w) for x in _active_x)
+    intervals = sorted(
+        (x - half_w, x + ASTEROID_SIZE + half_w) for x in _active_x
+    )
 
-    # Unisci intervalli sovrapposti
+    # Merge overlapping intervals
     merged: list[tuple[float, float]] = [intervals[0]]
     for start, end in intervals[1:]:
         if start <= merged[-1][1]:
@@ -107,90 +94,74 @@ def _find_largest_gap() -> tuple[float, float]:
         else:
             merged.append((start, end))
 
-    # Trova il gap piu' ampio
-    best_gap = (0.0, merged[0][0])  # gap iniziale
+    # Find the widest gap
+    best_gap = (0.0, merged[0][0])
     for i in range(len(merged) - 1):
         gap_start = merged[i][1]
-        gap_end   = merged[i + 1][0]
+        gap_end = merged[i + 1][0]
         if (gap_end - gap_start) > (best_gap[1] - best_gap[0]):
             best_gap = (gap_start, gap_end)
 
-    # Gap finale
     final_start = merged[-1][1]
-    final_end   = float(SCREEN_WIDTH)
+    final_end = float(SCREEN_WIDTH)
     if (final_end - final_start) > (best_gap[1] - best_gap[0]):
         best_gap = (final_start, final_end)
 
     return best_gap
 
 
-def _would_block_corridor(x: float, w: int,
-                          corridor: tuple[float, float]) -> bool:
-    """Verifica se piazzare un asteroide a ``x`` chiuderebbe il corridoio.
+def _would_block_corridor(
+    x: float,
+    w: int,
+    corridor: tuple[float, float],
+) -> bool:
+    """Check whether placing an asteroid at *x* would close the corridor.
 
-    Un corridoio e' considerato 'bloccato' se la sua larghezza residua
-    scenderebbe sotto ``SAFE_CORRIDOR_W``.
-
-    Args:
-        x:        Posizione X candidata per il nuovo asteroide.
-        w:        Larghezza asteroide.
-        corridor: Tupla ``(start, end)`` del corridoio corrente.
-
-    Returns:
-        ``True`` se lo spawn bloccherebbe il corridoio sicuro.
+    A corridor is considered blocked when its remaining width would drop
+    below ``SAFE_CORRIDOR_W``.
     """
     gap_w = corridor[1] - corridor[0]
     if gap_w <= SAFE_CORRIDOR_W:
-        # Il corridoio e' gia' stretto: non peggiorare
-        return True
+        return True  # already too narrow
 
     half = ASTEROID_SIZE / 2
-    ast_left  = x - half
+    ast_left = x - half
     ast_right = x + w + half
 
-    # L'asteroide si sovrappone al corridoio?
     if ast_right <= corridor[0] or ast_left >= corridor[1]:
-        return False  # fuori dal corridoio: ok
+        return False  # outside the corridor
 
-    # Stima conservativa: il corridoio piu' largo rimasto
-    left_gap  = max(0, ast_left - corridor[0])
+    left_gap = max(0, ast_left - corridor[0])
     right_gap = max(0, corridor[1] - ast_right)
-    best_remaining = max(left_gap, right_gap)
-
-    return best_remaining < SAFE_CORRIDOR_W
+    return max(left_gap, right_gap) < SAFE_CORRIDOR_W
 
 
 def clear_registry() -> None:
-    """Pulisce il registro globale degli asteroidi attivi."""
+    """Clear the global asteroid position registry."""
     _active_x.clear()
 
 
 class _Particle:
-    """Singola particella della scia luminosa di un asteroide.
+    """Single luminous trail particle for an asteroid.
 
-    Le particelle risalgono leggermente (simulando fumo caldo), avanzano
-    nei frame dello spritesheet e si spengono gradualmente.
+    Particles drift upward slightly (hot smoke), advance through the
+    spritestrip frames and fade out.
     """
-    __slots__ = ('x', 'y', 'vx', 'vy', 'frame', 'alpha', 'sz', 'alive')
 
-    def __init__(self, cx: float, cy: float):
-        """Crea una particella vicino al centro dell'asteroide.
+    __slots__ = ("x", "y", "vx", "vy", "frame", "alpha", "sz", "alive")
 
-        Args:
-            cx: Centro X dell'asteroide (pixel).
-            cy: Centro Y dell'asteroide (pixel).
-        """
-        self.x     = cx + random.uniform(-10, 10)
-        self.y     = cy + random.uniform(-6, 6)
-        self.vx    = random.uniform(-0.3, 0.3)
-        self.vy    = random.uniform(-1.0, -0.15)   # risale (fumo caldo)
+    def __init__(self, cx: float, cy: float) -> None:
+        self.x = cx + random.uniform(-10, 10)
+        self.y = cy + random.uniform(-6, 6)
+        self.vx = random.uniform(-0.3, 0.3)
+        self.vy = random.uniform(-1.0, -0.15)
         self.frame = float(random.randint(0, 2))
         self.alpha = random.randint(200, 255)
-        self.sz    = random.uniform(0.5, 1.2)
+        self.sz = random.uniform(0.5, 1.2)
         self.alive = True
 
     def update(self) -> None:
-        """Aggiorna posizione, frame e opacita' della particella."""
+        """Advance position, animation frame and opacity."""
         self.x += self.vx
         self.y += self.vy
         self.frame += 0.4
@@ -200,12 +171,7 @@ class _Particle:
             self.alive = False
 
     def draw(self, surf: pygame.Surface, frames: list[pygame.Surface]) -> None:
-        """Disegna la particella usando il frame dello spritesheet.
-
-        Args:
-            surf:   Surface di destinazione.
-            frames: Lista dei frame dello spritesheet della scia.
-        """
+        """Render the particle using the trail spritestrip."""
         fi = min(int(self.frame), _N_FRAMES - 1)
         src = frames[fi]
         sz = max(2, int(_FW * self.sz))
@@ -219,30 +185,21 @@ class _Particle:
 
 
 class Asteroid:
-    """Asteroide che cade dall'alto con rotazione e scia luminosa.
+    """Falling asteroid with rotation and a luminous trail.
 
-    Gli asteroidi sono indistruttibili (i laser non li colpiscono).
-    Collisione con il giocatore = morte istantanea (ignora scudo).
-
-    Attributi di classe:
-        MIN_SPEED: Velocita' minima di caduta.
-        MAX_SPEED: Velocita' massima di caduta (cap sicurezza).
+    Asteroids are indestructible (lasers pass through them).
+    Collision without a shield = instant death.
     """
 
     MIN_SPEED = 1.8
     MAX_SPEED = 3.2
 
-    def __init__(self):
-        """Crea un nuovo asteroide sopra lo schermo in una posizione X sicura.
-
-        Se il sistema di corridoio sicuro impedisce lo spawn (restituisce
-        ``x == -1``), l'asteroide viene creato ma immediatamente disattivato.
-        """
-        self.width  = ASTEROID_SIZE
+    def __init__(self) -> None:
+        self.width = ASTEROID_SIZE
         self.height = ASTEROID_SIZE
         x = _safe_x(self.width)
         if x < 0:
-            # Corridoio sicuro bloccato: l'asteroide non viene spawnato
+            # Safe corridor would be blocked -- abort spawn
             self.x = 0.0
             self.y = -999.0
             self.active = False
@@ -258,62 +215,57 @@ class Asteroid:
         _active_x.append(self.x)
 
         self.fall_speed = random.uniform(self.MIN_SPEED, self.MAX_SPEED)
-        self.angle     = 0.0
+        self.angle = 0.0
         self.rot_speed = random.choice([-3, -2, -1, 1, 2, 3])
         self.trail: list[_Particle] = []
 
     def update(self) -> None:
-        """Aggiorna posizione, rotazione e scia dell'asteroide."""
+        """Update position, rotation and trail particles."""
         if not self.active:
             return
 
         self.y += self.fall_speed
         self.angle = (self.angle + self.rot_speed) % 360
 
-        # Genera particelle per la scia
+        # Spawn trail particles
         cx = self.x + self.width // 2
         cy = self.y + self.height // 2
         for _ in range(random.randint(4, 6)):
             self.trail.append(_Particle(cx, cy))
 
-        # Aggiorna e pulisci particelle morte
         for p in self.trail:
             p.update()
         self.trail = [p for p in self.trail if p.alive]
 
-        # Disattiva se uscito dal basso dello schermo
+        # Deactivate when off the bottom of the screen
         if self.y > SCREEN_HEIGHT + 60:
             self.active = False
-            self._dereg()
+            self._unregister()
 
-    def _dereg(self) -> None:
-        """Rimuove la posizione X dal registro globale."""
+    def _unregister(self) -> None:
+        """Remove this asteroid's X from the global registry."""
         try:
             _active_x.remove(self.x)
         except ValueError:
             pass
 
     def deactivate(self) -> None:
-        """Disattiva esplicitamente l'asteroide e lo rimuove dal registro."""
+        """Explicitly deactivate and unregister the asteroid."""
         if self.active:
             self.active = False
-            self._dereg()
+            self._unregister()
 
     def draw(self, surf: pygame.Surface) -> None:
-        """Disegna l'asteroide con scia luminosa e rotazione.
-
-        Args:
-            surf: Surface di destinazione.
-        """
+        """Draw the rotating asteroid with its luminous trail."""
         if not self.active:
             return
 
-        # Disegna prima la scia (dietro l'asteroide)
+        # Trail behind the asteroid
         if Assets.trail_frames:
             for p in self.trail:
                 p.draw(surf, Assets.trail_frames)
 
-        # Disegna l'asteroide ruotato
+        # Rotated asteroid sprite
         rot = pygame.transform.rotate(Assets.asteroid_sprite, self.angle)
         rect = rot.get_rect(center=(
             int(self.x + self.width // 2),
@@ -322,10 +274,7 @@ class Asteroid:
         surf.blit(rot, rect)
 
     def get_rect(self) -> pygame.Rect:
-        """Restituisce la hitbox dell'asteroide (ridotta per fairness).
-
-        Shrink: 8 px per lato.
-        """
+        """Return the collision hitbox (shrunk 8 px per side)."""
         shrink = 8
         return pygame.Rect(
             self.x + shrink,

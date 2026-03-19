@@ -1,13 +1,13 @@
 """
-Formazioni nemici -- v5.
+Enemy formations -- 18 patterns with anti-repetition selection.
 
-Definisce 15+ formazioni disponibili e la logica di selezione basata
-sul livello di difficolta'.  Un sistema anti-ripetizione impedisce che
-la stessa formazione venga scelta due volte di seguito.
+Defines the available formation layouts and the difficulty-aware
+selection logic.  An anti-repetition buffer prevents the same
+formation from being chosen consecutively.
 
-Ogni formazione e' un insieme di ``Slot(col, row)`` in una griglia logica.
-Le posizioni di spawn vengono calcolate garantendo che il nuovo gruppo
-non si sovrapponga a nessun gruppo gia' presente sullo schermo.
+Each formation is a set of ``Slot(col, row)`` cells in a logical grid.
+Spawn positions are computed so that new groups do not overlap any
+formation group already on screen.
 """
 
 import random
@@ -17,34 +17,31 @@ from core.constants import SCREEN_WIDTH, SCREEN_HEIGHT, ENEMY_W, ENEMY_H
 
 
 class Slot(NamedTuple):
-    """Cella (colonna, riga) nella griglia di una formazione."""
+    """Cell coordinate (column, row) in a formation grid."""
     col: int
     row: int
 
 
 # ---------------------------------------------------------------------------
-# Dimensioni cella nella griglia delle formazioni.
-# Il padding extra garantisce spaziatura minima tra nemici nella stessa
-# formazione.
+# Grid cell dimensions (extra padding ensures spacing between enemies)
 # ---------------------------------------------------------------------------
-CELL_W = ENEMY_W + 16   # 76 px
-CELL_H = ENEMY_H + 20   # 80 px
+CELL_W = ENEMY_W + 16  # 76 px
+CELL_H = ENEMY_H + 20  # 80 px
 
 # ---------------------------------------------------------------------------
-# Catalogo formazioni.
-# Ogni formazione e' una lista di Slot(col, row).  Il nome e' puramente
-# mnemonico e viene usato per il mapping tipo-nemico.
+# Formation catalogue.
+# Each formation is a list of Slot(col, row).  Names are mnemonic.
 # ---------------------------------------------------------------------------
 FORMATIONS: dict[str, list[Slot]] = {
-    # --- Semplici (livelli bassi) ---
-    "H_LINE_3":  [Slot(c, 0) for c in range(3)],
-    "H_LINE_5":  [Slot(c, 0) for c in range(5)],
-    "V_LINE_3":  [Slot(0, r) for r in range(3)],
-    "GRID_3x2":  [Slot(c, r) for r in range(2) for c in range(3)],
-    "GRID_4x2":  [Slot(c, r) for r in range(2) for c in range(4)],
-    "GRID_3x3":  [Slot(c, r) for r in range(3) for c in range(3)],
+    # --- Simple (low levels) ---
+    "H_LINE_3":    [Slot(c, 0) for c in range(3)],
+    "H_LINE_5":    [Slot(c, 0) for c in range(5)],
+    "V_LINE_3":    [Slot(0, r) for r in range(3)],
+    "GRID_3x2":    [Slot(c, r) for r in range(2) for c in range(3)],
+    "GRID_4x2":    [Slot(c, r) for r in range(2) for c in range(4)],
+    "GRID_3x3":    [Slot(c, r) for r in range(3) for c in range(3)],
 
-    # --- Intermedie ---
+    # --- Intermediate ---
     "DIAMOND": [
         Slot(1, 0),
         Slot(0, 1), Slot(1, 1), Slot(2, 1),
@@ -71,7 +68,7 @@ FORMATIONS: dict[str, list[Slot]] = {
         Slot(0, 1), Slot(2, 1),
     ],
 
-    # --- Avanzate (livelli alti) ---
+    # --- Advanced (high levels) ---
     "PINCER": [
         Slot(0, 0), Slot(3, 0),
         Slot(0, 1), Slot(3, 1),
@@ -110,53 +107,44 @@ FORMATIONS: dict[str, list[Slot]] = {
 }
 
 # ---------------------------------------------------------------------------
-# Pool di formazioni per livello di difficolta'.
-# Ai livelli bassi le formazioni sono piu' semplici.
-# Ogni pool contiene almeno 5 voci per garantire varieta'.
+# Formation pools per difficulty level.
+# Lower levels use simpler formations.
 # ---------------------------------------------------------------------------
 _POOLS: list[list[str]] = [
-    # Lv 0 -- introduttivo
     ["H_LINE_3", "V_LINE_3", "GRID_3x2", "H_LINE_5", "STAGGER_3x2", "CROSS"],
-    # Lv 1 -- si aggiungono griglie
     ["H_LINE_5", "GRID_3x2", "GRID_4x2", "GRID_3x3", "T_SHAPE", "STAGGER_3x2", "CROSS"],
-    # Lv 2 -- formazioni intermedie
     ["GRID_3x3", "DIAMOND", "V_SHAPE", "Z_LINE", "CROSS", "T_SHAPE", "WING"],
-    # Lv 3 -- formazioni complesse
     ["V_SHAPE", "DIAMOND", "Z_LINE", "PINCER", "ARROW", "CHEVRON", "X_SHAPE"],
-    # Lv 4+ -- tutto il catalogo
     ["DIAMOND", "V_SHAPE", "PINCER", "ARROW", "Z_LINE", "WING",
      "CHEVRON", "FORTRESS", "X_SHAPE", "GRID_3x3", "GRID_4x2"],
 ]
 
-# Storico formazioni usate recentemente (per anti-ripetizione)
+# Anti-repetition buffer
 _recent_formations: list[str] = []
-_RECENT_MAX = 3   # non ripetere le ultime N formazioni
+_RECENT_MAX = 3
 
 
 def pick_formation(difficulty_level: int) -> tuple[str, list[Slot]]:
-    """Sceglie una formazione casuale dal pool appropriato per il livello.
+    """Choose a random formation appropriate for the given difficulty.
 
-    Il sistema anti-ripetizione evita che le ultime ``_RECENT_MAX``
-    formazioni vengano scelte nuovamente, garantendo varieta'.
+    The anti-repetition system prevents the last ``_RECENT_MAX``
+    formations from being selected again, ensuring variety.
 
     Args:
-        difficulty_level: Livello di difficolta' corrente (0+).
+        difficulty_level: Current difficulty level (0+).
 
     Returns:
-        Tupla ``(nome_formazione, lista_di_slot)``.
+        ``(formation_name, list_of_slots)``.
     """
     pool_idx = min(difficulty_level, len(_POOLS) - 1)
     pool = _POOLS[pool_idx]
 
-    # Filtra formazioni recenti
     candidates = [n for n in pool if n not in _recent_formations]
     if not candidates:
-        # Se tutte sono state usate di recente, usa il pool completo
         candidates = list(pool)
 
     name = random.choice(candidates)
 
-    # Aggiorna storico
     _recent_formations.append(name)
     if len(_recent_formations) > _RECENT_MAX:
         _recent_formations.pop(0)
@@ -165,78 +153,77 @@ def pick_formation(difficulty_level: int) -> tuple[str, list[Slot]]:
 
 
 def reset_formation_history() -> None:
-    """Resetta lo storico delle formazioni recenti (nuova partita)."""
+    """Clear the recent-formation buffer (call on new game)."""
     _recent_formations.clear()
 
 
 # ---------------------------------------------------------------------------
-# Calcolo posizioni di spawn
+# Spawn position calculation
 # ---------------------------------------------------------------------------
 
 def build_spawn_positions(
     slots: list[Slot],
     existing_groups=None,
 ) -> list[dict]:
-    """Calcola le posizioni di spawn per una formazione.
+    """Compute spawn positions for a formation.
 
-    La formazione viene posizionata sopra lo schermo (y negativa) e centrata
-    orizzontalmente con un offset casuale.  Se ci sono gruppi gia' presenti,
-    la posizione orizzontale viene scelta per NON sovrapporsi ai nemici
-    esistenti.
+    The formation is placed above the screen (negative Y) and centred
+    horizontally with a random offset.  If there are already groups on
+    screen the X position is chosen to avoid overlap.
 
     Args:
-        slots:           Lista di ``Slot`` della formazione scelta.
-        existing_groups: Lista opzionale di ``FormationGroup`` gia' sullo
-                         schermo (usata per evitare sovrapposizioni).
+        slots:           ``Slot`` list for the chosen formation.
+        existing_groups: Active ``FormationGroup`` list (may be ``None``).
 
     Returns:
-        Lista di dict con chiavi ``'x'``, ``'y'``, ``'slot'`` per ogni nemico.
+        List of dicts with keys ``'x'``, ``'y'``, ``'slot'``.
     """
     if not slots:
         return []
 
     max_col = max(s.col for s in slots)
     max_row = max(s.row for s in slots)
-    fw = (max_col + 1) * CELL_W   # larghezza totale formazione in pixel
-    fh = (max_row + 1) * CELL_H   # altezza totale formazione in pixel
+    fw = (max_col + 1) * CELL_W
+    fh = (max_row + 1) * CELL_H
 
     ox = _find_safe_x(fw, existing_groups)
-    oy = -fh - 40   # sopra lo schermo con margine extra
+    oy = -fh - 40  # above the screen with extra margin
 
     return [
-        {"x": float(ox + s.col * CELL_W),
-         "y": float(oy + s.row * CELL_H),
-         "slot": s}
+        {
+            "x": float(ox + s.col * CELL_W),
+            "y": float(oy + s.row * CELL_H),
+            "slot": s,
+        }
         for s in slots
     ]
 
 
 def _find_safe_x(formation_width: int, existing_groups) -> int:
-    """Trova una posizione X che non si sovrapponga ai gruppi esistenti.
+    """Find an X position that does not overlap existing groups.
 
-    Strategia:
-    1. Se non ci sono gruppi, posizionamento casuale nella zona centrale.
-    2. Altrimenti, tenta 60 posizioni casuali evitando le fasce occupate.
-    3. Fallback: cerca il gap piu' ampio tra le zone occupate.
+    Strategy:
+    1. No groups: random placement in the centre band.
+    2. Otherwise: try 60 random positions avoiding occupied zones.
+    3. Fallback: pick the widest gap between occupied zones.
 
     Args:
-        formation_width: Larghezza totale della formazione in pixel.
-        existing_groups: Lista di ``FormationGroup`` attivi (puo' essere ``None``).
+        formation_width: Total formation width in pixels.
+        existing_groups: List of active ``FormationGroup`` (may be ``None``).
 
     Returns:
-        Coordinata X (int) per l'angolo sinistro della formazione.
+        X coordinate (int) for the left edge of the formation.
     """
     x_min = 15
     x_max = max(x_min, SCREEN_WIDTH - formation_width - 15)
 
-    # Nessun gruppo esistente: posizionamento casuale centrato
     if not existing_groups:
         center = (SCREEN_WIDTH - formation_width) // 2
         cx_min = max(x_min, center - 100)
         cx_max = min(x_max, center + 100)
         return random.randint(cx_min, cx_max)
 
-    # Raccogli le fasce X occupate dai gruppi nella meta' superiore
+    # Gather occupied X bands from groups in the upper half
     occupied: list[tuple[float, float]] = []
     safety = 20
     for g in existing_groups:
@@ -255,7 +242,7 @@ def _find_safe_x(formation_width: int, existing_groups) -> int:
         cx_max = min(x_max, center + 100)
         return random.randint(cx_min, cx_max)
 
-    # Tenta posizionamento casuale evitando le zone occupate
+    # Try random non-overlapping positions
     for _ in range(60):
         ox = random.randint(x_min, x_max)
         new_l = ox
@@ -263,26 +250,23 @@ def _find_safe_x(formation_width: int, existing_groups) -> int:
         if all(new_l >= gr or new_r <= gl for gl, gr in occupied):
             return ox
 
-    # Fallback: cerca il gap piu' ampio
+    # Fallback: pick the widest gap
     occupied.sort()
     candidates: list[tuple[int, int]] = []
 
-    # Gap prima della prima zona occupata
     if occupied[0][0] > x_min + formation_width:
         gap = int(occupied[0][0] - x_min)
         cx = x_min + max(0, (gap - formation_width) // 2)
         candidates.append((gap, cx))
 
-    # Gap tra zone consecutive
     for i in range(len(occupied) - 1):
         gap_start = occupied[i][1]
-        gap_end   = occupied[i + 1][0]
+        gap_end = occupied[i + 1][0]
         gap = int(gap_end - gap_start)
         if gap >= formation_width:
             cx = int(gap_start + (gap - formation_width) // 2)
             candidates.append((gap, cx))
 
-    # Gap dopo l'ultima zona occupata
     gap_after = int(SCREEN_WIDTH - occupied[-1][1])
     if gap_after >= formation_width:
         cx = max(x_min, int(occupied[-1][1]))
@@ -293,5 +277,5 @@ def _find_safe_x(formation_width: int, existing_groups) -> int:
         _, best_x = candidates[0]
         return max(x_min, min(x_max, best_x))
 
-    # Ultimo fallback: overlap inevitabile su schermi molto stretti
+    # Last resort: unavoidable overlap on very narrow screens
     return random.randint(x_min, x_max)
