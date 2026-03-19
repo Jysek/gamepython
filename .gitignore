@@ -7,3 +7,5 @@ dist/
 build/
 .venv/
 venv/
+*.spec
+save_data.json

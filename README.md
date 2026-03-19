@@ -1,4 +1,4 @@
-# Space Shooter -- Infinite Survival v2.0
+# Space Shooter -- Infinite Survival v2.1
 
 A 2D arcade shooter inspired by Space Invaders, developed in **Python** with **Pygame**.
 
@@ -25,6 +25,24 @@ pip install pygame Pillow
 # Launch the game
 python main.py
 ```
+
+---
+
+## Building a Standalone Executable (PyInstaller)
+
+```bash
+pip install pyinstaller
+
+pyinstaller --onefile --windowed \
+    --add-data "assets:assets" \
+    --name "SpaceShooter" \
+    main.py
+```
+
+> The game automatically resolves asset paths when running from a
+> PyInstaller bundle (via `sys._MEIPASS`).  The **save file**
+> (`save_data.json`) is written next to the executable so it persists
+> across runs.
 
 ---
 
@@ -67,6 +85,16 @@ Five animated ships, each with unique stats and abilities.  The last two have a 
 | Nova    | 1.1x  | 0.85x        | 1      | EMP: clears enemy lasers       |
 | Zenith  | 0.9x  | 1.0x         | 2      | Overdrive: rapid fire for 5 s  |
 
+### Special Ability Cooldown Bar
+
+Ships with an active special ability (Phoenix / Nova / Zenith) display
+a **cooldown bar** directly below the ship sprite during gameplay.  The
+bar fills from left to right:
+
+- **Green** = fully charged / ready
+- **Yellow** = more than half charged
+- **Orange** = still recharging
+
 ---
 
 ## Enemies (4 animated types)
@@ -79,9 +107,11 @@ Five animated ships, each with unique stats and abilities.  The last two have a 
 | **Elite**   | 3  | 8      | Rapid 3-burst              |
 
 ### Intelligent Formations
+
 Formations contain **mixed types**: scouts in the front rows, bombers and elites in the back.  18 formation patterns are available, chosen with an anti-repetition system.
 
 ### Hit Feedback (multi-HP enemies)
+
 - **Shake**: rapid sprite oscillation
 - **Mini-explosion**: animated impact flash
 - **HP bar**: shows remaining health
@@ -90,17 +120,19 @@ Formations contain **mixed types**: scouts in the front rows, bombers and elites
 
 ## Boss Fight (4 variants)
 
-Each boss has a unique **animated GIF** and an exclusive **fire pattern**.  Boss selection is **random with equal probability**.
+Each boss has a unique **animated GIF** and an exclusive **fire pattern** that is challenging but always dodgeable with good positioning.
 
-| # | Name          | Pattern                                        |
-|---|---------------|------------------------------------------------|
-| 0 | **Titan**     | Rotating cannons: straight, converging, aimed  |
-| 1 | **Fury**      | Devastating bursts + auto secondary fire       |
-| 2 | **Fanblaze**  | Alternating fan waves with variable spread     |
-| 3 | **Vortex**    | 3 spiral arms that accelerate gradually        |
+| # | Name          | Pattern                                                     |
+|---|---------------|-------------------------------------------------------------|
+| 0 | **Titan**     | Alternating dual-cannon volleys (straight / converging)     |
+| 1 | **Fury**      | Staggered 3-shot bursts alternating left and right          |
+| 2 | **Fanblaze**  | Slow sweeping pendulum -- 3 parallel lasers sweep side to side |
+| 3 | **Vortex**    | Double helix -- two opposite spiral arms at constant speed  |
 
 ### Progressive Scaling
+
 Each successive boss gets stronger:
+
 - +10 HP per boss defeated
 - +0.3 horizontal speed
 - -4 frames shoot interval (min 22)
@@ -111,22 +143,27 @@ Each successive boss gets stronger:
 ## Game Mechanics
 
 ### Combo System
+
 Kill enemies in rapid succession to build combos:
+
 - 3+ kills: combo visible
 - Score multiplier: +50 %, +100 %, +150 %, +200 %, +300 %
 - Floating damage numbers on screen
 
 ### Bombs
+
 - Collect from the Bomb power-up (max 3)
 - Destroys ALL enemies on screen and clears enemy lasers
 - Deals 25 % of the boss's remaining HP
 - 2-second cooldown between uses
 
 ### Slow Motion
+
 - Activates automatically after a boss defeat
 - Slows the action for a dramatic moment
 
 ### Lives & Protection
+
 - 3 maximum lives
 - Temporary invincibility after each hit
 - Shield absorbs hits and protects from damage
@@ -167,7 +204,9 @@ Randomly chosen with anti-repetition:
 - Shield absorbs ONE asteroid hit
 
 ### Asteroid Rain
+
 Periodic special event:
+
 1. **3-second warning** with flashing orange overlay
 2. Asteroids rain down for 20--40 seconds
 3. **Guaranteed safe corridor**: at least 100 px clear
@@ -177,6 +216,7 @@ Periodic special event:
 ## Progressive Difficulty
 
 Every **30 seconds** the difficulty increases (max level 10):
+
 - Enemies +12 % speed per level
 - Shorter spawn intervals
 - More enemies per wave
@@ -195,6 +235,7 @@ All sounds -- including the **background music** -- are generated
 ## Save System
 
 The game auto-saves to `save_data.json`:
+
 - All-time high score
 - Top 10 scores
 - Unlocked ships (progressive unlock)
@@ -209,22 +250,22 @@ Automatic migration from earlier save formats is supported.
 ```
 SpaceShooter/
 |-- main.py                     # Entry point
-|-- save_data.json              # Auto-save file
+|-- save_data.json              # Auto-save file (created at runtime)
 |-- .gitignore
 |-- README.md
 |
 |-- core/                       # Shared infrastructure
 |   |-- __init__.py
 |   |-- assets.py               # Centralised asset loader (GIF/PNG -> Pygame)
-|   |-- constants.py            # Global constants (ships, bosses, colours, etc.)
-|   |-- save_manager.py         # JSON save / load / migration
+|   |-- constants.py            # Global constants (ships, bosses, colours, fonts)
+|   |-- save_manager.py         # JSON save / load / migration (PyInstaller-safe)
 |   +-- sounds.py               # Procedural audio + background music
 |
 |-- entities/                   # Game entities
 |   |-- __init__.py
 |   |-- player.py               # Player ship (5 ships, animated, abilities)
 |   |-- enemy.py                # Enemy with animated GIF sprite + shake
-|   |-- boss.py                 # Boss with 4 variants + unique fire patterns
+|   |-- boss.py                 # Boss with 4 variants + unique dodgeable patterns
 |   |-- asteroid.py             # Asteroid with safe-corridor logic
 |   |-- laser.py                # Straight / angled laser projectiles
 |   |-- powerup.py              # Carrier + falling power-up items

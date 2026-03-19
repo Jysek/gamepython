@@ -7,6 +7,8 @@ A 2D arcade shooter inspired by Space Invaders,
 developed in Python with Pygame.
 
 Main entry point of the game.
+When built with PyInstaller the bundled assets are resolved
+automatically via ``core.assets.resource_path()``.
 """
 
 import pygame

@@ -7,9 +7,13 @@ power-ups) are loaded and pre-scaled once in ``Assets.load()``.
 Animated GIFs (bosses, explosions, player ships, enemies) are
 decomposed into individual frames via Pillow (PIL) and converted to
 Pygame Surfaces for real-time rendering.
+
+The ``resource_path()`` helper resolves paths correctly both when
+running from source **and** from a PyInstaller frozen executable.
 """
 
 import os
+import sys
 import pygame
 from PIL import Image
 
@@ -49,16 +53,34 @@ _ENEMY_ROW = (44, 160)
 _ENEMY_BG = (255, 255, 255)
 
 
-def _project_root() -> str:
-    """Return the absolute path to the project root directory."""
-    return os.path.dirname(os.path.abspath(os.path.join(__file__, os.pardir)))
+def resource_path(relative: str) -> str:
+    """Return the absolute path to a bundled resource.
+
+    Works both from source (normal Python) and from a PyInstaller
+    one-file executable where resources are extracted into a temporary
+    directory referenced by ``sys._MEIPASS``.
+
+    Args:
+        relative: Path relative to the project root (e.g.
+                  ``'assets/ships/navicelle.gif'``).
+
+    Returns:
+        Absolute filesystem path.
+    """
+    if getattr(sys, "frozen", False):
+        # Running inside a PyInstaller bundle
+        base = sys._MEIPASS  # type: ignore[attr-defined]
+    else:
+        # Running from source -- project root is one level above core/
+        base = os.path.dirname(os.path.abspath(os.path.join(__file__, os.pardir)))
+    return os.path.join(base, relative)
 
 
 def _gif_frames(path: str) -> list[pygame.Surface]:
     """Decompose an animated GIF into individual Pygame Surfaces.
 
     Uses Pillow to read each frame, converts it to RGBA, then
-    transforms it into a Pygame Surface.
+    transforms it into a Pygame Surface with ``convert_alpha()``.
 
     Args:
         path: Absolute path to the GIF file.
@@ -72,7 +94,7 @@ def _gif_frames(path: str) -> list[pygame.Surface]:
         gif.seek(i)
         rgba = gif.convert("RGBA")
         data = rgba.tobytes()
-        surf = pygame.image.fromstring(data, rgba.size, "RGBA")
+        surf = pygame.image.fromstring(data, rgba.size, "RGBA").convert_alpha()
         frames.append(surf)
     return frames
 
@@ -98,7 +120,7 @@ def _gif_frames_remove_bg(
                         and abs(b - bg[2]) < tolerance):
                     pixels[x, y] = (0, 0, 0, 0)
         data = rgba.tobytes()
-        surf = pygame.image.fromstring(data, rgba.size, "RGBA")
+        surf = pygame.image.fromstring(data, rgba.size, "RGBA").convert_alpha()
         frames.append(surf)
     return frames
 
@@ -149,7 +171,9 @@ def _extract_ship_frames_from_gif(
                                 and abs(b - bg[2]) < tolerance):
                             pixels[x, y] = (0, 0, 0, 0)
                 data = cell.tobytes()
-                surf = pygame.image.fromstring(data, cell.size, "RGBA")
+                surf = pygame.image.fromstring(
+                    data, cell.size, "RGBA",
+                ).convert_alpha()
                 cell_frames.append(surf)
             ships.append(cell_frames)
     return ships
@@ -198,14 +222,20 @@ def _extract_enemy_frames_from_gif(
                             and abs(b - bg[2]) < tolerance):
                         pixels[x, y] = (0, 0, 0, 0)
             data = cell.tobytes()
-            surf = pygame.image.fromstring(data, cell.size, "RGBA")
+            surf = pygame.image.fromstring(
+                data, cell.size, "RGBA",
+            ).convert_alpha()
             cell_frames.append(surf)
         enemies.append(cell_frames)
     return enemies
 
 
 class Assets:
-    """Static container for all graphical game assets."""
+    """Static container for all graphical game assets.
+
+    Call ``Assets.load()`` once after ``pygame.display.set_mode()`` so
+    that ``convert_alpha()`` can optimise the pixel format.
+    """
 
     _loaded: bool = False
 
@@ -252,14 +282,13 @@ class Assets:
         if cls._loaded:
             return
 
-        root = _project_root()
-        ships_dir = os.path.join(root, "assets", "ships")
-        enemies_dir = os.path.join(root, "assets", "enemies")
-        bosses_dir = os.path.join(root, "assets", "bosses")
-        lasers_dir = os.path.join(root, "assets", "lasers")
-        powerups_dir = os.path.join(root, "assets", "powerups")
-        sprites_dir = os.path.join(root, "assets", "sprites")
-        effects_dir = os.path.join(root, "assets", "effects")
+        ships_dir = resource_path(os.path.join("assets", "ships"))
+        enemies_dir = resource_path(os.path.join("assets", "enemies"))
+        bosses_dir = resource_path(os.path.join("assets", "bosses"))
+        lasers_dir = resource_path(os.path.join("assets", "lasers"))
+        powerups_dir = resource_path(os.path.join("assets", "powerups"))
+        sprites_dir = resource_path(os.path.join("assets", "sprites"))
+        effects_dir = resource_path(os.path.join("assets", "effects"))
 
         def _load_img(
             directory: str,
@@ -268,7 +297,7 @@ class Assets:
         ) -> pygame.Surface:
             """Load a single image, optionally rescaling it."""
             surf = pygame.image.load(
-                os.path.join(directory, name)
+                os.path.join(directory, name),
             ).convert_alpha()
             return pygame.transform.scale(surf, size) if size else surf
 
@@ -276,7 +305,7 @@ class Assets:
             """Load and scale a laser sprite to standard size."""
             return pygame.transform.scale(
                 pygame.image.load(
-                    os.path.join(lasers_dir, name)
+                    os.path.join(lasers_dir, name),
                 ).convert_alpha(),
                 (_LASER_W, _LASER_H),
             )
@@ -289,7 +318,6 @@ class Assets:
             _NAV_ROWS, _NAV_COLS, _NAV_BG, tolerance=15,
         )
         # Select 5 visually distinct ships from the 3x4 grid
-        # Indices in the sheet: 1, 2, 5, 8, 11
         selected_indices = [1, 2, 5, 8, 11]
         cls.player_ship_frames = []
         for idx in selected_indices:
@@ -351,12 +379,12 @@ class Assets:
         )
 
         sheet = pygame.image.load(
-            os.path.join(sprites_dir, "asteroid_trail.png")
+            os.path.join(sprites_dir, "asteroid_trail.png"),
         ).convert_alpha()
         cls.trail_frames = []
         for i in range(_TRAIL_N):
             frame = sheet.subsurface(
-                pygame.Rect(i * _TRAIL_FW, 0, _TRAIL_FW, _TRAIL_FH)
+                pygame.Rect(i * _TRAIL_FW, 0, _TRAIL_FW, _TRAIL_FH),
             ).copy()
             cls.trail_frames.append(frame)
 
@@ -386,7 +414,7 @@ class Assets:
         # EXPLOSIONS (animated GIF)
         # ==============================================================
         cls.explosion_frames_raw = _gif_frames(
-            os.path.join(effects_dir, "explosionGif.gif")
+            os.path.join(effects_dir, "explosionGif.gif"),
         )
         cls.explosion_frames = [
             pygame.transform.scale(f, (EXPLOSION_SIZE, EXPLOSION_SIZE))
