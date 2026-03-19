@@ -30,6 +30,18 @@ STAR_WHITE = (200, 200, 220)
 GOLD = (255, 215, 0)
 
 # ============================================================================
+# FONT SIZES  -- Scaled for 800 x 600 resolution
+# ============================================================================
+FONT_TITLE = 64          # Main titles (SPACE SHOOTER, GAME OVER)
+FONT_LARGE = 44          # Secondary titles (PAUSED, CHOOSE YOUR SHIP)
+FONT_MEDIUM = 30         # Menu items, subtitles
+FONT_SMALL = 22          # Ship names, stats, info lines
+FONT_TINY = 18           # Hints, small labels
+FONT_HUD = 24            # In-game HUD text
+FONT_SHIP_CARD_NAME = 20 # Ship card name on selection screen
+FONT_SHIP_CARD_STAT = 16 # Ship card stat labels
+
+# ============================================================================
 # SPRITE DIMENSIONS (pixels)
 # ============================================================================
 PLAYER_W = 60
@@ -96,6 +108,13 @@ SHIP_STATS = [
     {"speed": 0.9, "fire_rate": 1.0, "damage": 2, "special": "overdrive"},
 ]
 
+# Special ability cooldown durations (in frames at 60 FPS)
+SPECIAL_COOLDOWNS = {
+    "emp": 20 * 60,        # 20 seconds
+    "overdrive": 30 * 60,  # 30 seconds
+    "regen": 15 * 60,      # 15 seconds between regen ticks
+}
+
 # ============================================================================
 # POWER-UP TYPES
 # ============================================================================
@@ -116,10 +135,10 @@ POWERUP_COLORS = {
 NUM_BOSS_VARIANTS = 4
 
 BOSS_NAMES = [
-    "Titan",       # Classic rotating cannons
-    "Fury",        # Devastating bursts
-    "Fanblaze",    # Alternating fan waves
-    "Vortex",      # Rotating spiral arms
+    "Titan",       # Alternating dual-cannon straight/converging shots
+    "Fury",        # Staggered burst volleys from sides
+    "Fanblaze",    # Slow sweeping beam (left-right pendulum)
+    "Vortex",      # Rotating double helix spiral
 ]
 
 # ============================================================================

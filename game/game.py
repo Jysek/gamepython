@@ -1,8 +1,10 @@
-"""Space Shooter -- Infinite Survival  |  game.py (final release)
+"""Space Shooter -- Infinite Survival  |  game.py
 
 Authors: Ceccariglia Emanuele & Andrea Cestelli -- ITSUmbria 2026
 
 Main game loop, state management, spawning, collisions, HUD and pause.
+All font sizes are defined in ``core.constants`` so they can be tuned
+from a single location.
 """
 
 import math
@@ -22,6 +24,8 @@ from core.constants import (
     SHAKE_INTENSITY_LIGHT, SHAKE_INTENSITY_MEDIUM, SHAKE_INTENSITY_HEAVY,
     GRACE_PERIOD_FRAMES, SLOW_MO_DURATION, SLOW_MO_FACTOR,
     BOSS_NAMES,
+    FONT_TITLE, FONT_LARGE, FONT_MEDIUM, FONT_SMALL, FONT_TINY,
+    FONT_HUD, FONT_SHIP_CARD_NAME, FONT_SHIP_CARD_STAT,
 )
 from core.assets import Assets
 from core.sounds import create_sounds, generate_background_music
@@ -69,20 +73,28 @@ class Game:
         self.stars = StarField()
         self.save = load_save_data()
 
-        # Fonts (sized for readability)
-        self.font_title = pygame.font.Font(None, 72)
-        self.font_large = pygame.font.Font(None, 52)
-        self.font_medium = pygame.font.Font(None, 34)
-        self.font_small = pygame.font.Font(None, 26)
-        self.font_tiny = pygame.font.Font(None, 20)
-        self.font_hud = pygame.font.Font(None, 28)
+        # ----- Fonts (sizes from constants for easy tuning) -----
+        self.font_title = pygame.font.Font(None, FONT_TITLE)
+        self.font_large = pygame.font.Font(None, FONT_LARGE)
+        self.font_medium = pygame.font.Font(None, FONT_MEDIUM)
+        self.font_small = pygame.font.Font(None, FONT_SMALL)
+        self.font_tiny = pygame.font.Font(None, FONT_TINY)
+        self.font_hud = pygame.font.Font(None, FONT_HUD)
+        self.font_card_name = pygame.font.Font(None, FONT_SHIP_CARD_NAME)
+        self.font_card_stat = pygame.font.Font(None, FONT_SHIP_CARD_STAT)
+
+        # ----- Pre-allocated reusable surfaces (perf) -----
+        self._shake_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        self._overlay_surf = pygame.Surface(
+            (SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA,
+        )
 
         # Global state
         self.state: str = "menu"
         self.selected_ship: int = 0
         self._prev_selected_ship: int = 0
         self.menu_selection: int = 0
-        self._music_channel = None
+        self._music_channel: pygame.mixer.Channel | None = None
         self._credits_scroll: float = float(SCREEN_HEIGHT)
         self._pause_selection: int = 0
         self._ship_page: int = 0
@@ -228,8 +240,8 @@ class Game:
             self._shake_timer -= 1
             ratio = self._shake_timer / max(1, self._shake_intensity * 2)
             amp = int(self._shake_intensity * ratio)
-            self._shake_offset_x = random.randint(-amp, amp)
-            self._shake_offset_y = random.randint(-amp, amp)
+            self._shake_offset_x = random.randint(-amp, amp) if amp else 0
+            self._shake_offset_y = random.randint(-amp, amp) if amp else 0
         else:
             self._shake_offset_x = 0
             self._shake_offset_y = 0
@@ -393,6 +405,9 @@ class Game:
 
     def _on_boss_defeated(self) -> None:
         """Handle boss death: explosions, score, slow-mo, schedule next."""
+        if self.boss is None:
+            return
+
         cx = self.boss.x + self.boss.width // 2
         cy = self.boss.y + self.boss.height // 2
 
@@ -843,12 +858,16 @@ class Game:
                 if self.player.shield_active:
                     self.sounds["shield_active"].play()
                     self._trigger_shake(SHAKE_INTENSITY_LIGHT)
-                    self.player.shield_timer = max(0, self.player.shield_timer - 30)
+                    self.player.shield_timer = max(
+                        0, self.player.shield_timer - 30,
+                    )
                     if self.player.shield_timer <= 0:
                         self.player.shield_active = False
                         self.sounds["shield_break"].play()
                         self.player.invincible = True
-                        self.player.invincible_timer = self.player.invincible_duration // 2
+                        self.player.invincible_timer = (
+                            self.player.invincible_duration // 2
+                        )
                 elif not self.player.invincible:
                     dead = self.player.take_damage()
                     self._trigger_shake(SHAKE_INTENSITY_MEDIUM)
@@ -888,12 +907,16 @@ class Game:
                     ))
                     if self.player.shield_active:
                         self.sounds["shield_active"].play()
-                        self.player.shield_timer = max(0, self.player.shield_timer - 60)
+                        self.player.shield_timer = max(
+                            0, self.player.shield_timer - 60,
+                        )
                         if self.player.shield_timer <= 0:
                             self.player.shield_active = False
                             self.sounds["shield_break"].play()
                             self.player.invincible = True
-                            self.player.invincible_timer = self.player.invincible_duration // 2
+                            self.player.invincible_timer = (
+                                self.player.invincible_duration // 2
+                            )
                         self._trigger_shake(SHAKE_INTENSITY_LIGHT)
                     elif not self.player.invincible:
                         dead = self.player.take_damage()
@@ -988,9 +1011,10 @@ class Game:
             self.save.get("bosses_defeated", 0) + self.boss_defeated_count
         )
 
-        self.save["best_scores"].append(self.score)
-        self.save["best_scores"].sort(reverse=True)
-        self.save["best_scores"] = self.save["best_scores"][:10]
+        best: list = self.save.setdefault("best_scores", [])
+        best.append(self.score)
+        best.sort(reverse=True)
+        self.save["best_scores"] = best[:10]
         save_data(self.save)
 
         self.state = "game_over"
@@ -1042,42 +1066,51 @@ class Game:
         t1 = self.font_title.render("SPACE SHOOTER", True, CYAN)
         t2 = self.font_medium.render("Infinite Survival", True, WHITE)
         self.screen.blit(t1, (SCREEN_WIDTH // 2 - t1.get_width() // 2, 60))
-        self.screen.blit(t2, (SCREEN_WIDTH // 2 - t2.get_width() // 2, 130))
+        self.screen.blit(t2, (SCREEN_WIDTH // 2 - t2.get_width() // 2, 125))
 
         # Ship preview
         frames = Assets.player_ship_frames
         if self.selected_ship < len(frames) and frames[self.selected_ship]:
-            preview = pygame.transform.scale(frames[self.selected_ship][0], (70, 70))
-            self.screen.blit(preview, (SCREEN_WIDTH // 2 - 35, 170))
-
-            name = SHIP_NAMES[self.selected_ship] if self.selected_ship < len(SHIP_NAMES) else ""
-            nt = self.font_small.render(
-                name, True, SHIP_COLORS[self.selected_ship % len(SHIP_COLORS)],
+            preview = pygame.transform.scale(
+                frames[self.selected_ship][0], (64, 64),
             )
-            self.screen.blit(nt, (SCREEN_WIDTH // 2 - nt.get_width() // 2, 245))
+            self.screen.blit(preview, (SCREEN_WIDTH // 2 - 32, 165))
+
+            name = (
+                SHIP_NAMES[self.selected_ship]
+                if self.selected_ship < len(SHIP_NAMES) else ""
+            )
+            nt = self.font_small.render(
+                name, True,
+                SHIP_COLORS[self.selected_ship % len(SHIP_COLORS)],
+            )
+            self.screen.blit(nt, (SCREEN_WIDTH // 2 - nt.get_width() // 2, 234))
 
         items = ["PLAY", "SHIPS", "CREDITS", "EXIT"]
         for i, item in enumerate(items):
             col = YELLOW if i == self.menu_selection else WHITE
             pre = "> " if i == self.menu_selection else "  "
             txt = self.font_medium.render(f"{pre}{item}", True, col)
-            self.screen.blit(txt, (SCREEN_WIDTH // 2 - txt.get_width() // 2, 280 + i * 48))
+            self.screen.blit(
+                txt,
+                (SCREEN_WIDTH // 2 - txt.get_width() // 2, 270 + i * 44),
+            )
 
         hint = self.font_tiny.render(
             "W/S to navigate  |  ENTER to confirm", True, (100, 100, 130),
         )
-        self.screen.blit(hint, (SCREEN_WIDTH // 2 - hint.get_width() // 2, 495))
+        self.screen.blit(hint, (SCREEN_WIDTH // 2 - hint.get_width() // 2, 500))
 
         hs = self.font_small.render(
             f"High Score: {self.save['high_score']} pts", True, YELLOW,
         )
-        self.screen.blit(hs, (SCREEN_WIDTH // 2 - hs.get_width() // 2, 525))
+        self.screen.blit(hs, (SCREEN_WIDTH // 2 - hs.get_width() // 2, 530))
 
         cr = self.font_tiny.render(
             "Ceccariglia Emanuele & Andrea Cestelli -- ITSUmbria 2026",
             True, (90, 90, 110),
         )
-        self.screen.blit(cr, (SCREEN_WIDTH // 2 - cr.get_width() // 2, 565))
+        self.screen.blit(cr, (SCREEN_WIDTH // 2 - cr.get_width() // 2, 568))
 
     def handle_menu_input(self, event: pygame.event.Event) -> None:
         """Process keyboard input on the main menu."""
@@ -1113,9 +1146,8 @@ class Game:
         """Render the scrolling credits screen."""
         self.screen.fill(BLACK)
         self.stars.draw(self.screen)
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 120))
-        self.screen.blit(overlay, (0, 0))
+        self._overlay_surf.fill((0, 0, 0, 120))
+        self.screen.blit(self._overlay_surf, (0, 0))
 
         lines = [
             ("SPACE SHOOTER", self.font_title, CYAN),
@@ -1145,7 +1177,9 @@ class Game:
         for text, font, color in lines:
             s = font.render(text, True, color)
             if -50 < y < SCREEN_HEIGHT + 10:
-                self.screen.blit(s, (SCREEN_WIDTH // 2 - s.get_width() // 2, int(y)))
+                self.screen.blit(
+                    s, (SCREEN_WIDTH // 2 - s.get_width() // 2, int(y)),
+                )
             y += font.size(text)[1] + 6
         self._credits_scroll -= 1.0
         if y < 0:
@@ -1153,7 +1187,9 @@ class Game:
 
     def handle_credits_input(self, event: pygame.event.Event) -> None:
         """Process input on the credits screen."""
-        if event.type == pygame.KEYDOWN and event.key in (pygame.K_ESCAPE, pygame.K_RETURN):
+        if event.type == pygame.KEYDOWN and event.key in (
+            pygame.K_ESCAPE, pygame.K_RETURN,
+        ):
             self.state = "menu"
             self.sounds["select"].play()
 
@@ -1181,7 +1217,9 @@ class Game:
             "A/D = Choose  |  ENTER = Confirm  |  ESC = Back",
             True, (150, 150, 170),
         )
-        self.screen.blit(instr, (SCREEN_WIDTH // 2 - instr.get_width() // 2, 555))
+        self.screen.blit(
+            instr, (SCREEN_WIDTH // 2 - instr.get_width() // 2, 555),
+        )
 
     def _ship_card(self, bx: int, ship_idx: int, card_w: int) -> None:
         """Draw one ship selection card."""
@@ -1196,41 +1234,58 @@ class Game:
         border = YELLOW if is_sel else (80, 80, 100)
         bg = (30, 30, 50) if is_unlocked else (20, 15, 15)
         pygame.draw.rect(self.screen, bg, (bx, by, card_w, bh))
-        pygame.draw.rect(self.screen, border, (bx, by, card_w, bh), 3 if is_sel else 2)
+        pygame.draw.rect(
+            self.screen, border, (bx, by, card_w, bh), 3 if is_sel else 2,
+        )
 
         # Ship name
-        name = SHIP_NAMES[ship_idx] if ship_idx < len(SHIP_NAMES) else f"Ship {ship_idx}"
-        nc = SHIP_COLORS[ship_idx % len(SHIP_COLORS)] if is_unlocked else (100, 100, 100)
-        ns = self.font_small.render(name, True, nc)
+        name = (
+            SHIP_NAMES[ship_idx]
+            if ship_idx < len(SHIP_NAMES) else f"Ship {ship_idx}"
+        )
+        nc = (
+            SHIP_COLORS[ship_idx % len(SHIP_COLORS)]
+            if is_unlocked else (100, 100, 100)
+        )
+        ns = self.font_card_name.render(name, True, nc)
         self.screen.blit(ns, (bx + card_w // 2 - ns.get_width() // 2, by + 8))
 
         # Ship preview
         frames = Assets.player_ship_frames
         if ship_idx < len(frames) and frames[ship_idx]:
-            preview = pygame.transform.scale(frames[ship_idx][0], (55, 55))
+            preview = pygame.transform.scale(frames[ship_idx][0], (50, 50))
             if not is_unlocked:
                 preview.set_alpha(80)
-            self.screen.blit(preview, (bx + card_w // 2 - 27, by + 38))
+            self.screen.blit(preview, (bx + card_w // 2 - 25, by + 34))
         else:
             pygame.draw.rect(
                 self.screen, (60, 60, 60),
-                (bx + card_w // 2 - 27, by + 38, 55, 55),
+                (bx + card_w // 2 - 25, by + 34, 50, 50),
             )
 
         # Description
-        desc = SHIP_DESCRIPTIONS[ship_idx] if ship_idx < len(SHIP_DESCRIPTIONS) else ""
+        desc = (
+            SHIP_DESCRIPTIONS[ship_idx]
+            if ship_idx < len(SHIP_DESCRIPTIONS) else ""
+        )
         dc = WHITE if is_unlocked else (80, 80, 80)
-        ds = self.font_tiny.render(desc, True, dc)
-        self.screen.blit(ds, (bx + card_w // 2 - ds.get_width() // 2, by + 100))
+        ds = self.font_card_stat.render(desc, True, dc)
+        self.screen.blit(ds, (bx + card_w // 2 - ds.get_width() // 2, by + 92))
 
         # Cannon type
-        has_double = ship_idx < len(SHIP_DOUBLE_CANNON) and SHIP_DOUBLE_CANNON[ship_idx]
+        has_double = (
+            ship_idx < len(SHIP_DOUBLE_CANNON)
+            and SHIP_DOUBLE_CANNON[ship_idx]
+        )
         shoot_type = "Double cannon" if has_double else "Single cannon"
         st_col = GOLD if has_double else (150, 150, 180)
         if not is_unlocked:
             st_col = (70, 70, 70)
-        st_surf = self.font_tiny.render(shoot_type, True, st_col)
-        self.screen.blit(st_surf, (bx + card_w // 2 - st_surf.get_width() // 2, by + 118))
+        st_surf = self.font_card_stat.render(shoot_type, True, st_col)
+        self.screen.blit(
+            st_surf,
+            (bx + card_w // 2 - st_surf.get_width() // 2, by + 110),
+        )
 
         # Special ability
         if is_unlocked and ship_idx < len(SHIP_STATS):
@@ -1244,13 +1299,16 @@ class Game:
             }
             sp_name = special_names.get(special, "")
             if sp_name:
-                sp_surf = self.font_tiny.render(sp_name, True, MAGENTA)
-                self.screen.blit(sp_surf, (bx + card_w // 2 - sp_surf.get_width() // 2, by + 136))
+                sp_surf = self.font_card_stat.render(sp_name, True, MAGENTA)
+                self.screen.blit(
+                    sp_surf,
+                    (bx + card_w // 2 - sp_surf.get_width() // 2, by + 128),
+                )
 
         # Stat bars
         if ship_idx < len(SHIP_STATS):
             stats = SHIP_STATS[ship_idx]
-            bar_start_y = by + 158
+            bar_start_y = by + 150
             stat_items = [
                 ("SPD", stats["speed"], 1.5, GREEN),
                 ("ROF", 1.0 / stats["fire_rate"], 1.8, CYAN),
@@ -1260,37 +1318,60 @@ class Game:
                 if not is_unlocked:
                     scol = (60, 60, 60)
                 sy = bar_start_y + si * 18
-                sl = self.font_tiny.render(
-                    label, True, (130, 130, 150) if is_unlocked else (60, 60, 60),
+                sl = self.font_card_stat.render(
+                    label, True,
+                    (130, 130, 150) if is_unlocked else (60, 60, 60),
                 )
                 self.screen.blit(sl, (bx + 6, sy))
                 bar_max_w = card_w - 46
-                pygame.draw.rect(self.screen, (40, 40, 40), (bx + 34, sy + 3, bar_max_w, 7))
+                pygame.draw.rect(
+                    self.screen, (40, 40, 40),
+                    (bx + 34, sy + 3, bar_max_w, 7),
+                )
                 fill = min(1.0, val / max_val)
-                pygame.draw.rect(self.screen, scol, (bx + 34, sy + 3, int(bar_max_w * fill), 7))
+                pygame.draw.rect(
+                    self.screen, scol,
+                    (bx + 34, sy + 3, int(bar_max_w * fill), 7),
+                )
 
         # Unlock status
-        unlock_score = SHIP_UNLOCK_SCORES[ship_idx] if ship_idx < len(SHIP_UNLOCK_SCORES) else 9999
+        unlock_score = (
+            SHIP_UNLOCK_SCORES[ship_idx]
+            if ship_idx < len(SHIP_UNLOCK_SCORES) else 9999
+        )
         if is_unlocked:
-            st = self.font_tiny.render("AVAILABLE", True, GREEN)
+            st = self.font_card_stat.render("AVAILABLE", True, GREEN)
         else:
-            st = self.font_tiny.render(f"Unlock: {unlock_score} pts", True, ORANGE)
-        self.screen.blit(st, (bx + card_w // 2 - st.get_width() // 2, by + 220))
+            st = self.font_card_stat.render(
+                f"Unlock: {unlock_score} pts", True, ORANGE,
+            )
+        self.screen.blit(st, (bx + card_w // 2 - st.get_width() // 2, by + 216))
 
         if not is_unlocked:
             hs = self.save.get("high_score", 0)
             pct = min(1.0, hs / max(1, unlock_score))
             bar_w = card_w - 16
             bar_x = bx + 8
-            bar_y = by + 240
-            pygame.draw.rect(self.screen, (40, 40, 40), (bar_x, bar_y, bar_w, 6))
-            pygame.draw.rect(self.screen, ORANGE, (bar_x, bar_y, int(bar_w * pct), 6))
-            prog_txt = self.font_tiny.render(f"{hs}/{unlock_score}", True, (120, 120, 120))
-            self.screen.blit(prog_txt, (bx + card_w // 2 - prog_txt.get_width() // 2, bar_y + 9))
+            bar_y2 = by + 236
+            pygame.draw.rect(
+                self.screen, (40, 40, 40), (bar_x, bar_y2, bar_w, 6),
+            )
+            pygame.draw.rect(
+                self.screen, ORANGE, (bar_x, bar_y2, int(bar_w * pct), 6),
+            )
+            prog_txt = self.font_card_stat.render(
+                f"{hs}/{unlock_score}", True, (120, 120, 120),
+            )
+            self.screen.blit(
+                prog_txt,
+                (bx + card_w // 2 - prog_txt.get_width() // 2, bar_y2 + 9),
+            )
 
         if is_sel and is_unlocked:
-            sel = self.font_tiny.render("SELECTED", True, YELLOW)
-            self.screen.blit(sel, (bx + card_w // 2 - sel.get_width() // 2, by + bh - 22))
+            sel = self.font_card_stat.render("SELECTED", True, YELLOW)
+            self.screen.blit(
+                sel, (bx + card_w // 2 - sel.get_width() // 2, by + bh - 20),
+            )
 
     def handle_ship_select_input(self, event: pygame.event.Event) -> None:
         """Process input on the ship selection screen."""
@@ -1319,12 +1400,13 @@ class Game:
 
     def draw_pause_overlay(self) -> None:
         """Draw the semi-transparent pause overlay."""
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 180))
-        self.screen.blit(overlay, (0, 0))
+        self._overlay_surf.fill((0, 0, 0, 180))
+        self.screen.blit(self._overlay_surf, (0, 0))
 
         title = self.font_large.render("PAUSED", True, CYAN)
-        self.screen.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 170))
+        self.screen.blit(
+            title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 170),
+        )
 
         pause_items = ["RESUME", "MAIN MENU"]
         for i, txt in enumerate(pause_items):
@@ -1332,7 +1414,9 @@ class Game:
             col = YELLOW if is_sel else WHITE
             pre = "> " if is_sel else "  "
             s = self.font_medium.render(f"{pre}{txt}", True, col)
-            self.screen.blit(s, (SCREEN_WIDTH // 2 - s.get_width() // 2, 260 + i * 50))
+            self.screen.blit(
+                s, (SCREEN_WIDTH // 2 - s.get_width() // 2, 260 + i * 50),
+            )
 
         secs = self.game_time // 60
         stat = self.font_small.render(
@@ -1340,7 +1424,9 @@ class Game:
             f"Level {self._diff_level + 1}",
             True, YELLOW,
         )
-        self.screen.blit(stat, (SCREEN_WIDTH // 2 - stat.get_width() // 2, 400))
+        self.screen.blit(
+            stat, (SCREEN_WIDTH // 2 - stat.get_width() // 2, 400),
+        )
 
         ctrl_lines = [
             "WASD/Arrows = Move  |  SPACE = Shoot",
@@ -1348,7 +1434,9 @@ class Game:
         ]
         for i, line in enumerate(ctrl_lines):
             ct = self.font_tiny.render(line, True, (120, 120, 150))
-            self.screen.blit(ct, (SCREEN_WIDTH // 2 - ct.get_width() // 2, 440 + i * 22))
+            self.screen.blit(
+                ct, (SCREEN_WIDTH // 2 - ct.get_width() // 2, 440 + i * 22),
+            )
 
     # -- WARNING OVERLAYS --
 
@@ -1362,31 +1450,45 @@ class Game:
     ) -> None:
         """Draw a flashing warning overlay with a progress bar."""
         flash = int(abs(math.sin(timer * 0.1)) * 80)
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        self._overlay_surf.fill((0, 0, 0, 0))
         if color == RED:
             c = (flash, 0, 0, 100)
         else:
             c = (flash, int(flash * 0.6), 0, 120)
-        overlay.fill(c)
-        self.screen.blit(overlay, (0, 0))
+        self._overlay_surf.fill(c)
+        self.screen.blit(self._overlay_surf, (0, 0))
 
         blink = 12 if color == RED else 10
         if (timer // blink) % 2 == 0:
             wt = self.font_large.render("!! WARNING !!", True, color)
-            self.screen.blit(wt, (SCREEN_WIDTH // 2 - wt.get_width() // 2, SCREEN_HEIGHT // 2 - 60))
+            self.screen.blit(
+                wt,
+                (SCREEN_WIDTH // 2 - wt.get_width() // 2,
+                 SCREEN_HEIGHT // 2 - 60),
+            )
 
         sub = self.font_medium.render(subtitle, True, color)
-        self.screen.blit(sub, (SCREEN_WIDTH // 2 - sub.get_width() // 2, SCREEN_HEIGHT // 2 + 10))
+        self.screen.blit(
+            sub,
+            (SCREEN_WIDTH // 2 - sub.get_width() // 2,
+             SCREEN_HEIGHT // 2 + 10),
+        )
         if extra:
             ex = self.font_small.render(extra, True, WHITE)
-            self.screen.blit(ex, (SCREEN_WIDTH // 2 - ex.get_width() // 2, SCREEN_HEIGHT // 2 + 50))
+            self.screen.blit(
+                ex,
+                (SCREEN_WIDTH // 2 - ex.get_width() // 2,
+                 SCREEN_HEIGHT // 2 + 50),
+            )
 
         prog = timer / dur
-        bw, bh = 300, 8
+        bw, bh_bar = 300, 8
         bx = SCREEN_WIDTH // 2 - bw // 2
         by2 = SCREEN_HEIGHT // 2 + (85 if extra else 60)
-        pygame.draw.rect(self.screen, (60, 60, 60), (bx, by2, bw, bh))
-        pygame.draw.rect(self.screen, color, (bx, by2, int(bw * prog), bh))
+        pygame.draw.rect(self.screen, (60, 60, 60), (bx, by2, bw, bh_bar))
+        pygame.draw.rect(
+            self.screen, color, (bx, by2, int(bw * prog), bh_bar),
+        )
 
     # -- IN-GAME RENDERING --
 
@@ -1394,51 +1496,53 @@ class Game:
         """Render the gameplay screen."""
         self.screen.fill(BLACK)
 
-        # Off-screen surface for screen-shake
-        shake_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        shake_surf.fill(BLACK)
-        self.stars.draw(shake_surf)
+        # Reuse pre-allocated shake surface
+        self._shake_surf.fill(BLACK)
+        self.stars.draw(self._shake_surf)
 
         for laser in self.player_lasers:
-            laser.draw(shake_surf)
+            laser.draw(self._shake_surf)
         for laser in self.enemy_lasers:
-            laser.draw(shake_surf)
+            laser.draw(self._shake_surf)
         if self.boss_active and self.boss:
-            self.boss.draw(shake_surf)
+            self.boss.draw(self._shake_surf)
         for group in self.formation_groups:
-            group.draw(shake_surf)
+            group.draw(self._shake_surf)
         for carrier in self.carriers:
-            carrier.draw(shake_surf)
+            carrier.draw(self._shake_surf)
         for pu in self.falling_powerups:
-            pu.draw(shake_surf)
+            pu.draw(self._shake_surf)
         for ast in self.asteroids:
-            ast.draw(shake_surf)
-        self.player.draw(shake_surf)
+            ast.draw(self._shake_surf)
+        self.player.draw(self._shake_surf)
         for expl in self.explosions:
-            expl.draw(shake_surf)
+            expl.draw(self._shake_surf)
 
         # Floating damage numbers
         for dn in self._damage_numbers:
             alpha = min(255, dn["timer"] * 6)
             txt = self.font_small.render(dn["text"], True, dn["color"])
             txt.set_alpha(alpha)
-            shake_surf.blit(txt, (int(dn["x"]) - txt.get_width() // 2, int(dn["y"])))
+            self._shake_surf.blit(
+                txt, (int(dn["x"]) - txt.get_width() // 2, int(dn["y"])),
+            )
 
-        self.screen.blit(shake_surf, (self._shake_offset_x, self._shake_offset_y))
+        self.screen.blit(
+            self._shake_surf,
+            (self._shake_offset_x, self._shake_offset_y),
+        )
 
         # EMP flash overlay
         if self._emp_flash > 0:
-            emp_overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-            alpha = int(self._emp_flash * 6)
-            emp_overlay.fill((0, 200, 255, min(alpha, 80)))
-            self.screen.blit(emp_overlay, (0, 0))
+            alpha = min(80, int(self._emp_flash * 6))
+            self._overlay_surf.fill((0, 200, 255, alpha))
+            self.screen.blit(self._overlay_surf, (0, 0))
 
         # Bomb flash overlay
         if self._bomb_flash > 0:
-            bomb_overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-            alpha = int(self._bomb_flash * 8)
-            bomb_overlay.fill((255, 255, 255, min(alpha, 120)))
-            self.screen.blit(bomb_overlay, (0, 0))
+            alpha = min(120, int(self._bomb_flash * 8))
+            self._overlay_surf.fill((255, 255, 255, alpha))
+            self.screen.blit(self._overlay_surf, (0, 0))
 
         # Warning overlays
         if self.boss_warning:
@@ -1464,7 +1568,7 @@ class Game:
             self.draw_pause_overlay()
 
     def _draw_hud(self) -> None:
-        """Draw the heads-up display (score, lives, time, etc.)."""
+        """Draw the heads-up display (score, lives, time, special bar)."""
         hud_y = 38 if (self.boss_active and self.boss and self.boss.alive) else 10
 
         # Score
@@ -1476,31 +1580,38 @@ class Game:
 
         # Time
         secs = self.game_time // 60
-        tt = self.font_small.render(f"Time: {_fmt_time(secs)}", True, (180, 180, 200))
-        self.screen.blit(tt, (SCREEN_WIDTH - 145, hud_y + 6))
+        tt = self.font_tiny.render(
+            f"Time: {_fmt_time(secs)}", True, (180, 180, 200),
+        )
+        self.screen.blit(tt, (SCREEN_WIDTH - 130, hud_y + 6))
 
         # Level
-        dlvl = self.font_tiny.render(f"Level {self._diff_level + 1}", True, (120, 200, 120))
-        self.screen.blit(dlvl, (SCREEN_WIDTH - 80, hud_y + 30))
+        dlvl = self.font_tiny.render(
+            f"Level {self._diff_level + 1}", True, (120, 200, 120),
+        )
+        self.screen.blit(dlvl, (SCREEN_WIDTH - 80, hud_y + 24))
 
         # Status line
         if self.rain_active or self.rain_draining:
             col = ORANGE if (self.game_time // 20) % 2 == 0 else YELLOW
             label = "ASTEROID RAIN" if self.rain_active else "ASTEROIDS CLEARING..."
             ri = self.font_tiny.render(f"* {label}", True, col)
-            self.screen.blit(ri, (SCREEN_WIDTH // 2 - ri.get_width() // 2, hud_y + 30))
+            self.screen.blit(
+                ri, (SCREEN_WIDTH // 2 - ri.get_width() // 2, hud_y + 24),
+            )
         elif self.boss_active:
             bi = self.font_tiny.render(
-                f"BOSS FIGHT!  (defeated: {self.boss_defeated_count})", True, RED,
+                f"BOSS FIGHT!  (defeated: {self.boss_defeated_count})",
+                True, RED,
             )
-            self.screen.blit(bi, (SCREEN_WIDTH - 300, hud_y + 30))
+            self.screen.blit(bi, (SCREEN_WIDTH - 280, hud_y + 24))
         else:
             alive = self._total_alive()
             fg = self.font_tiny.render(
                 f"Enemies: {alive}  |  Groups: {len(self.formation_groups)}",
                 True, (180, 100, 100),
             )
-            self.screen.blit(fg, (SCREEN_WIDTH - 240, hud_y + 30))
+            self.screen.blit(fg, (SCREEN_WIDTH - 230, hud_y + 24))
 
         # Fire cooldown bar
         ticks = pygame.time.get_ticks()
@@ -1510,8 +1621,12 @@ class Game:
         cd = max(0, cooldown - (ticks - self.player.last_shot_time))
         if cd > 0:
             pct = cd / cooldown
-            pygame.draw.rect(self.screen, (60, 60, 60), (16, hud_y + 38, 60, 5))
-            pygame.draw.rect(self.screen, CYAN, (16, hud_y + 38, int(60 * (1 - pct)), 5))
+            pygame.draw.rect(
+                self.screen, (60, 60, 60), (16, hud_y + 32, 60, 4),
+            )
+            pygame.draw.rect(
+                self.screen, CYAN, (16, hud_y + 32, int(60 * (1 - pct)), 4),
+            )
 
         # Bottom-of-screen control hints
         hints = ["ESC = Pause"]
@@ -1528,9 +1643,12 @@ class Game:
             hints.append(key_hint)
 
         ph = self.font_tiny.render("  |  ".join(hints), True, (80, 80, 105))
-        self.screen.blit(ph, (SCREEN_WIDTH // 2 - ph.get_width() // 2, SCREEN_HEIGHT - 18))
+        self.screen.blit(
+            ph, (SCREEN_WIDTH // 2 - ph.get_width() // 2, SCREEN_HEIGHT - 18),
+        )
 
         self._draw_pu_hud(hud_y)
+        self._draw_special_bar(hud_y)
         self._draw_combo_hud(hud_y)
 
     def _draw_pu_hud(self, hud_y: int) -> None:
@@ -1563,13 +1681,64 @@ class Game:
         if not active:
             return
 
-        py = hud_y + 50
+        py = hud_y + 46
         for name, col, secs_left, pct in active:
             lbl = self.font_tiny.render(f"{name} {secs_left:.1f}s", True, col)
             self.screen.blit(lbl, (14, py))
             pygame.draw.rect(self.screen, (40, 40, 40), (10, py + 16, 120, 3))
-            pygame.draw.rect(self.screen, col, (10, py + 16, int(120 * pct), 3))
+            pygame.draw.rect(
+                self.screen, col, (10, py + 16, int(120 * pct), 3),
+            )
             py += 20
+
+    def _draw_special_bar(self, hud_y: int) -> None:
+        """Draw the special-ability cooldown bar below the player ship.
+
+        The bar is drawn just under the ship sprite, centred on the
+        player's X position.  It fills from left to right as the
+        special recharges.
+        """
+        pct = self.player.special_cooldown_pct
+        if pct < 0:
+            return  # no bar for this ship
+
+        label = self.player.special_label
+        if not label:
+            return
+
+        bar_w = self.player.width + 10
+        bar_h = 5
+        bar_x = self.player.x + self.player.width // 2 - bar_w // 2
+        bar_y = self.player.y + self.player.height + 6
+
+        # Background
+        pygame.draw.rect(
+            self.screen, (40, 40, 50),
+            (int(bar_x), int(bar_y), bar_w, bar_h),
+        )
+
+        # Fill colour depends on ready state
+        if pct >= 1.0:
+            bar_col = GREEN
+        elif pct > 0.5:
+            bar_col = YELLOW
+        else:
+            bar_col = ORANGE
+
+        fill_w = int(bar_w * min(1.0, max(0.0, pct)))
+        if fill_w > 0:
+            pygame.draw.rect(
+                self.screen, bar_col,
+                (int(bar_x), int(bar_y), fill_w, bar_h),
+            )
+
+        # Tiny label
+        lbl = self.font_tiny.render(label, True, bar_col)
+        self.screen.blit(
+            lbl,
+            (int(bar_x + bar_w // 2 - lbl.get_width() // 2),
+             int(bar_y + bar_h + 1)),
+        )
 
     def _draw_combo_hud(self, hud_y: int) -> None:
         """Draw the combo counter and kill count."""
@@ -1583,42 +1752,51 @@ class Game:
                 col = RED
             ct = self.font_medium.render(combo_text, True, col)
             ct.set_alpha(alpha)
-            self.screen.blit(ct, (SCREEN_WIDTH // 2 - ct.get_width() // 2, hud_y + 50))
+            self.screen.blit(
+                ct, (SCREEN_WIDTH // 2 - ct.get_width() // 2, hud_y + 46),
+            )
 
-        kt = self.font_tiny.render(f"Kills: {self._total_kills}", True, (120, 120, 150))
+        kt = self.font_tiny.render(
+            f"Kills: {self._total_kills}", True, (120, 120, 150),
+        )
         self.screen.blit(kt, (16, SCREEN_HEIGHT - 34))
 
     def _draw_grace_countdown(self) -> None:
         """Draw the starting countdown overlay."""
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 120))
-        self.screen.blit(overlay, (0, 0))
+        self._overlay_surf.fill((0, 0, 0, 120))
+        self.screen.blit(self._overlay_surf, (0, 0))
 
         seconds_left = (self._grace_timer // 60) + 1
         count_text = str(seconds_left) if seconds_left > 0 else "GO!"
 
         pulse = 1.0 + 0.2 * abs(math.sin(self._grace_timer * 0.15))
-        font_size = int(90 * pulse)
+        font_size = int(80 * pulse)
         big_font = pygame.font.Font(None, font_size)
         ct = big_font.render(count_text, True, CYAN)
         self.screen.blit(
-            ct, (SCREEN_WIDTH // 2 - ct.get_width() // 2,
-                 SCREEN_HEIGHT // 2 - ct.get_height() // 2 - 30),
+            ct,
+            (SCREEN_WIDTH // 2 - ct.get_width() // 2,
+             SCREEN_HEIGHT // 2 - ct.get_height() // 2 - 30),
         )
 
         hint = self.font_medium.render("Get Ready!", True, WHITE)
-        self.screen.blit(hint, (SCREEN_WIDTH // 2 - hint.get_width() // 2, SCREEN_HEIGHT // 2 + 50))
+        self.screen.blit(
+            hint, (SCREEN_WIDTH // 2 - hint.get_width() // 2, SCREEN_HEIGHT // 2 + 50),
+        )
 
         ctrl = self.font_small.render(
             "WASD = Move  |  SPACE = Shoot  |  B = Bomb  |  F = Special",
             True, (150, 150, 180),
         )
-        self.screen.blit(ctrl, (SCREEN_WIDTH // 2 - ctrl.get_width() // 2, SCREEN_HEIGHT // 2 + 90))
+        self.screen.blit(
+            ctrl,
+            (SCREEN_WIDTH // 2 - ctrl.get_width() // 2, SCREEN_HEIGHT // 2 + 85),
+        )
 
     def _draw_lives(self, hud_y: int) -> None:
         """Draw the heart-shaped life indicators."""
         sz, sp = 18, 24
-        sx, sy = 200, hud_y + 8
+        sx, sy = 180, hud_y + 8
         for i in range(Player.MAX_LIVES):
             col = RED if i < self.player.lives else (60, 60, 60)
             self._heart(self.screen, sx + i * sp, sy, sz, col)
@@ -1629,7 +1807,9 @@ class Game:
         r = sz // 4
         pygame.draw.circle(surf, col, (x + r, y + r), r)
         pygame.draw.circle(surf, col, (x + sz // 2 + r, y + r), r)
-        pygame.draw.polygon(surf, col, [(x, y + r), (x + sz, y + r), (x + sz // 2, y + sz)])
+        pygame.draw.polygon(
+            surf, col, [(x, y + r), (x + sz, y + r), (x + sz // 2, y + sz)],
+        )
 
     # -- IN-GAME INPUT --
 
@@ -1670,15 +1850,14 @@ class Game:
         """Render the game-over screen."""
         self.screen.fill(BLACK)
         self.stars.draw(self.screen)
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 150))
-        self.screen.blit(overlay, (0, 0))
+        self._overlay_surf.fill((0, 0, 0, 150))
+        self.screen.blit(self._overlay_surf, (0, 0))
 
         go = self.font_title.render("GAME OVER", True, RED)
         self.screen.blit(go, (SCREEN_WIDTH // 2 - go.get_width() // 2, 80))
 
         sc = self.font_large.render(f"Score: {self.score}", True, WHITE)
-        self.screen.blit(sc, (SCREEN_WIDTH // 2 - sc.get_width() // 2, 165))
+        self.screen.blit(sc, (SCREEN_WIDTH // 2 - sc.get_width() // 2, 160))
 
         is_new = (self.score >= self.save["high_score"] and self.score > 0)
         rp = "NEW RECORD!  " if is_new else "Best: "
@@ -1686,7 +1865,7 @@ class Game:
             f"{rp}{self.save['high_score']}",
             True, YELLOW if is_new else (180, 180, 200),
         )
-        self.screen.blit(rec, (SCREEN_WIDTH // 2 - rec.get_width() // 2, 220))
+        self.screen.blit(rec, (SCREEN_WIDTH // 2 - rec.get_width() // 2, 212))
 
         secs = self.game_time // 60
         tt = self.font_small.render(
@@ -1694,32 +1873,49 @@ class Game:
             f"  |  Kills: {self._total_kills}  |  Bosses: {self.boss_defeated_count}",
             True, (180, 180, 200),
         )
-        self.screen.blit(tt, (SCREEN_WIDTH // 2 - tt.get_width() // 2, 260))
+        self.screen.blit(tt, (SCREEN_WIDTH // 2 - tt.get_width() // 2, 250))
 
         if self._combo_best >= 3:
-            cb = self.font_small.render(f"Best Combo: x{self._combo_best}", True, ORANGE)
-            self.screen.blit(cb, (SCREEN_WIDTH // 2 - cb.get_width() // 2, 288))
+            cb = self.font_small.render(
+                f"Best Combo: x{self._combo_best}", True, ORANGE,
+            )
+            self.screen.blit(cb, (SCREEN_WIDTH // 2 - cb.get_width() // 2, 276))
 
-        y_offset = 320
+        y_offset = 310
         if self._newly_unlocked:
             for idx in self._newly_unlocked:
-                name = SHIP_NAMES[idx] if idx < len(SHIP_NAMES) else f"Ship {idx}"
-                ul = self.font_medium.render(f"SHIP {name.upper()} UNLOCKED!", True, MAGENTA)
-                self.screen.blit(ul, (SCREEN_WIDTH // 2 - ul.get_width() // 2, y_offset))
-                y_offset += 32
+                name = (
+                    SHIP_NAMES[idx]
+                    if idx < len(SHIP_NAMES) else f"Ship {idx}"
+                )
+                ul = self.font_medium.render(
+                    f"SHIP {name.upper()} UNLOCKED!", True, MAGENTA,
+                )
+                self.screen.blit(
+                    ul, (SCREEN_WIDTH // 2 - ul.get_width() // 2, y_offset),
+                )
+                y_offset += 30
 
         r1 = self.font_small.render("ENTER = Retry", True, GREEN)
         r2 = self.font_small.render("ESC = Main Menu", True, (150, 150, 170))
-        self.screen.blit(r1, (SCREEN_WIDTH // 2 - r1.get_width() // 2, y_offset + 15))
-        self.screen.blit(r2, (SCREEN_WIDTH // 2 - r2.get_width() // 2, y_offset + 42))
+        self.screen.blit(r1, (SCREEN_WIDTH // 2 - r1.get_width() // 2, y_offset + 12))
+        self.screen.blit(r2, (SCREEN_WIDTH // 2 - r2.get_width() // 2, y_offset + 36))
 
-        if self.save["best_scores"]:
-            top_y = y_offset + 80
+        if self.save.get("best_scores"):
+            top_y = y_offset + 70
             top = self.font_small.render("Top Scores:", True, YELLOW)
-            self.screen.blit(top, (SCREEN_WIDTH // 2 - top.get_width() // 2, top_y))
+            self.screen.blit(
+                top, (SCREEN_WIDTH // 2 - top.get_width() // 2, top_y),
+            )
             for i, s in enumerate(self.save["best_scores"][:5]):
-                st = self.font_tiny.render(f"{i + 1}. {s} pts", True, (180, 180, 200))
-                self.screen.blit(st, (SCREEN_WIDTH // 2 - st.get_width() // 2, top_y + 25 + i * 20))
+                st = self.font_tiny.render(
+                    f"{i + 1}. {s} pts", True, (180, 180, 200),
+                )
+                self.screen.blit(
+                    st,
+                    (SCREEN_WIDTH // 2 - st.get_width() // 2,
+                     top_y + 22 + i * 18),
+                )
 
     def handle_game_over_input(self, event: pygame.event.Event) -> None:
         """Process input on the game-over screen."""

@@ -3,7 +3,8 @@ Player ship -- animated sprite with lives, invincibility, power-ups
 and special abilities.
 
 Five playable ships with unique stats and abilities.  The last two
-(Nova, Zenith) feature a double cannon.
+(Nova, Zenith) feature a double cannon.  Ships with a special ability
+expose ``special_cooldown_pct`` for the HUD cooldown bar.
 """
 
 import math
@@ -13,7 +14,7 @@ import pygame
 from core.constants import (
     SCREEN_WIDTH, SCREEN_HEIGHT, PLAYER_W, PLAYER_H,
     CYAN, SHIP_COLORS, NUM_PLAYER_SHIPS,
-    SHIP_STATS, SHIP_DOUBLE_CANNON,
+    SHIP_STATS, SHIP_DOUBLE_CANNON, SPECIAL_COOLDOWNS,
 )
 from core.assets import Assets
 from entities.laser import Laser, AngledLaser
@@ -93,22 +94,22 @@ class Player:
 
         # Regen (Phoenix): restore 1 HP every 15 s
         self._regen_timer = 0
-        self._regen_interval = 15 * 60
+        self._regen_interval = SPECIAL_COOLDOWNS.get("regen", 15 * 60)
 
         # Piercing (Striker): lasers pass through enemies
         self.piercing_shots = (self.special == "piercing")
 
         # EMP (Nova)
         self.emp_cooldown = 0
-        self.emp_max_cooldown = 20 * 60
-        self.emp_ready = False
+        self.emp_max_cooldown = SPECIAL_COOLDOWNS.get("emp", 20 * 60)
+        self.emp_ready = True  # starts ready
 
         # Overdrive (Zenith): temporary rapid fire
         self.overdrive_active = False
         self.overdrive_timer = 0
         self.overdrive_duration = 5 * 60
         self.overdrive_cooldown = 0
-        self.overdrive_max_cooldown = 30 * 60
+        self.overdrive_max_cooldown = SPECIAL_COOLDOWNS.get("overdrive", 30 * 60)
 
         # GIF animation state
         self._frame_idx = 0
@@ -117,6 +118,66 @@ class Player:
 
         # Engine trail particles (visual effect)
         self._engine_particles: list[dict] = []
+
+    # ========================================================================
+    # SPECIAL COOLDOWN PERCENTAGE (for HUD bar)
+    # ========================================================================
+
+    @property
+    def special_cooldown_pct(self) -> float:
+        """Return 0.0 .. 1.0 representing how charged the special is.
+
+        1.0 means fully charged (ready).  0.0 means just used.
+        Ships with ``special == 'none'`` always return -1 (no bar).
+        """
+        if self.special == "none":
+            return -1.0
+
+        if self.special == "regen":
+            # Show regen timer progress (fills up between heals)
+            if self.lives >= Player.MAX_LIVES:
+                return 1.0
+            return self._regen_timer / max(1, self._regen_interval)
+
+        if self.special == "piercing":
+            # Piercing is always-on passive -- no cooldown bar
+            return -1.0
+
+        if self.special == "emp":
+            if self.emp_ready:
+                return 1.0
+            return 1.0 - (self.emp_cooldown / max(1, self.emp_max_cooldown))
+
+        if self.special == "overdrive":
+            if self.overdrive_active:
+                # During overdrive: show remaining active time
+                return self.overdrive_timer / max(1, self.overdrive_duration)
+            if self.overdrive_cooldown > 0:
+                return 1.0 - (self.overdrive_cooldown / max(1, self.overdrive_max_cooldown))
+            return 1.0
+
+        return -1.0
+
+    @property
+    def special_label(self) -> str:
+        """Return a short label describing the current special state."""
+        labels = {
+            "none": "",
+            "regen": "REGEN",
+            "piercing": "",
+            "emp": "EMP",
+            "overdrive": "OVERDRIVE",
+        }
+        return labels.get(self.special, "")
+
+    @property
+    def special_is_ready(self) -> bool:
+        """Return True if the special ability is ready to activate."""
+        if self.special == "emp":
+            return self.emp_ready
+        if self.special == "overdrive":
+            return not self.overdrive_active and self.overdrive_cooldown <= 0
+        return False
 
     # ========================================================================
     # UPDATE
@@ -197,18 +258,22 @@ class Player:
     def _update_special_timers(self) -> None:
         """Tick down special-ability cooldowns and effects."""
         # Phoenix: passive HP regen
-        if self.special == "regen" and self.lives < Player.MAX_LIVES:
-            self._regen_timer += 1
-            if self._regen_timer >= self._regen_interval:
+        if self.special == "regen":
+            if self.lives < Player.MAX_LIVES:
+                self._regen_timer += 1
+                if self._regen_timer >= self._regen_interval:
+                    self._regen_timer = 0
+                    self.lives = min(Player.MAX_LIVES, self.lives + 1)
+            else:
+                # Reset timer when at full HP so bar shows full
                 self._regen_timer = 0
-                self.lives = min(Player.MAX_LIVES, self.lives + 1)
 
         # Nova: EMP cooldown
         if self.special == "emp":
             if self.emp_cooldown > 0:
                 self.emp_cooldown -= 1
-            else:
-                self.emp_ready = True
+                if self.emp_cooldown <= 0:
+                    self.emp_ready = True
 
         # Zenith: Overdrive duration / cooldown
         if self.special == "overdrive":
@@ -232,7 +297,7 @@ class Player:
                 "size": random.uniform(1.5, 3.5),
             })
 
-        new_particles = []
+        new_particles: list[dict] = []
         for p in self._engine_particles:
             p["y"] += 1.5
             p["alpha"] -= 12
@@ -367,8 +432,12 @@ class Player:
         ]
 
         if self.triple_shot_active:
-            left_spr = Assets.laser_left_angular[self.ship_type % len(Assets.laser_left_angular)]
-            right_spr = Assets.laser_right_angular[self.ship_type % len(Assets.laser_right_angular)]
+            left_spr = Assets.laser_left_angular[
+                self.ship_type % len(Assets.laser_left_angular)
+            ]
+            right_spr = Assets.laser_right_angular[
+                self.ship_type % len(Assets.laser_right_angular)
+            ]
             lasers.extend([
                 AngledLaser(center_x - cannon_offset, self.y, -7, -45,
                             self.color, sprite=left_spr),
@@ -386,8 +455,12 @@ class Player:
         ]
 
         if self.triple_shot_active:
-            left_spr = Assets.laser_left_angular[self.ship_type % len(Assets.laser_left_angular)]
-            right_spr = Assets.laser_right_angular[self.ship_type % len(Assets.laser_right_angular)]
+            left_spr = Assets.laser_left_angular[
+                self.ship_type % len(Assets.laser_left_angular)
+            ]
+            right_spr = Assets.laser_right_angular[
+                self.ship_type % len(Assets.laser_right_angular)
+            ]
             lasers.extend([
                 AngledLaser(center_x, self.y, -7, -45, self.color, sprite=left_spr),
                 AngledLaser(center_x, self.y, -7, 45, self.color, sprite=right_spr),
@@ -416,12 +489,19 @@ class Player:
                 frame = frames[self._frame_idx % len(frames)]
                 scaled_ship = pygame.transform.scale(frame, (self.width, self.height))
             else:
-                scaled_ship = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-                pygame.draw.rect(scaled_ship, self.color, (0, 0, self.width, self.height))
+                scaled_ship = pygame.Surface(
+                    (self.width, self.height), pygame.SRCALPHA,
+                )
+                pygame.draw.rect(
+                    scaled_ship, self.color,
+                    (0, 0, self.width, self.height),
+                )
 
             # Overdrive: golden tint overlay
             if self.overdrive_active:
-                overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+                overlay = pygame.Surface(
+                    (self.width, self.height), pygame.SRCALPHA,
+                )
                 alpha = int(abs(math.sin(self.overdrive_timer * 0.15)) * 60) + 30
                 overlay.fill((255, 215, 0, alpha))
                 scaled_ship.blit(overlay, (0, 0), special_flags=pygame.BLEND_ADD)

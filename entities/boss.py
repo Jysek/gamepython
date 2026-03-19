@@ -2,11 +2,20 @@
 Boss -- 4 variants with GIF animation, unique laser patterns and
 progressive stat scaling.
 
-Variants (random spawn with equal probability):
-- Boss 0 (Titan):    Classic rotating cannons with 4 sub-patterns.
-- Boss 1 (Fury):     Devastating rapid-fire bursts.
-- Boss 2 (Fanblaze): Alternating fan-wave spreads.
-- Boss 3 (Vortex):   Rotating spiral arms that accelerate.
+Each boss has a single, clearly identifiable attack pattern that is
+challenging but always possible to dodge:
+
+- Boss 0 (Titan):    Alternating dual-cannon volleys -- straight down
+                      from outer cannons, then converging from inner
+                      cannons.  Leaves clear lateral safe zones.
+- Boss 1 (Fury):     Staggered burst volleys -- fires 3-shot bursts
+                      alternating left/right side with a pause between.
+- Boss 2 (Fanblaze): Slow sweeping pendulum -- 3 lasers sweep smoothly
+                      from one side to the other, then reverse.
+                      Dodge by moving *with* the sweep direction.
+- Boss 3 (Vortex):   Double helix -- two opposite spiral arms rotate
+                      at a constant moderate speed.  Dodge by orbiting
+                      in the same direction as the rotation.
 
 Each successive defeat increases the next boss's stats.
 """
@@ -24,7 +33,7 @@ from entities.laser import Laser
 
 
 class Boss:
-    """Boss enemy with animated GIF, unique fire patterns and a health bar.
+    """Boss enemy with animated GIF, unique fire pattern and a health bar.
 
     Args:
         variant: Boss variant index (0--3).
@@ -37,7 +46,7 @@ class Boss:
         self.x = float(SCREEN_WIDTH // 2 - self.width // 2)
         self.y = float(-self.height)
 
-        self.target_y = 30
+        self.target_y = 30.0
         self.entering = True
         self.alive = True
 
@@ -72,25 +81,26 @@ class Boss:
         self.hit_flash = 0
         self.hit_flash_max = 8
 
-        # Spiral angle accumulator (for Vortex)
-        self._spiral_angle = 0.0
+        # --- Pattern-specific state ---
 
-        # Titan: cannon rotation counter
-        self._titano_rotation = 0
+        # Titan: alternating volley phase (0 = outer straight, 1 = inner converge)
+        self._titan_phase = 0
 
-        # Fury: burst counter and delay
-        self._burst_count = 0
-        self._burst_delay = 0
+        # Fury: side toggle and burst state
+        self._fury_side = 0          # 0 = left, 1 = right
+        self._fury_burst_left = 0    # remaining shots in current burst
+        self._fury_burst_delay = 0   # frames between burst shots
 
-        # Fanblaze: alternating direction and wave counter
-        self._fan_direction = 1
-        self._fan_wave = 0
+        # Fanblaze: pendulum sweep angle and direction
+        self._fan_angle = -30.0      # current sweep angle (degrees)
+        self._fan_dir = 1            # +1 = sweeping right, -1 = sweeping left
+        self._fan_sweep_speed = 1.2  # degrees per fire tick
 
-        # Vortex: spiral speed and acceleration
-        self._spiral_speed = 0.4
-        self._spiral_accel = 0.01
+        # Vortex: rotation angle for the double helix
+        self._helix_angle = 0.0
+        self._helix_speed = 0.08     # radians per frame
 
-        # HP font (created once)
+        # HP font (cached)
         self._hp_font = pygame.font.Font(None, 22)
 
         # Cached scaled sprite
@@ -120,7 +130,7 @@ class Boss:
         if self.entering:
             self.y += 1.5
             if self.y >= self.target_y:
-                self.y = float(self.target_y)
+                self.y = self.target_y
                 self.entering = False
             return []
 
@@ -152,21 +162,28 @@ class Boss:
         if self.hit_flash > 0:
             self.hit_flash -= 1
 
+        # Update Vortex helix rotation every frame (independent of fire)
+        if self.variant == 3:
+            self._helix_angle += self._helix_speed
+
         # Primary fire
         self.shoot_timer += 1
         if self.shoot_timer >= self.shoot_interval:
             self.shoot_timer = 0
             return self._fire()
 
-        # Secondary fire patterns (independent timer)
-        return self._fire_secondary()
+        # Fury burst continuation (fires between primary ticks)
+        if self.variant == 1:
+            return self._fury_burst_tick()
+
+        return []
 
     # ------------------------------------------------------------------
-    # FIRE PATTERNS
+    # FIRE PATTERNS  (redesigned: simple, unique, dodgeable)
     # ------------------------------------------------------------------
 
     def _fire(self) -> list:
-        """Execute the primary fire pattern for this variant."""
+        """Dispatch to the variant-specific fire pattern."""
         if self.variant == 0:
             return self._fire_titan()
         elif self.variant == 1:
@@ -177,23 +194,6 @@ class Boss:
             return self._fire_vortex()
         return self._fire_titan()
 
-    def _fire_secondary(self) -> list:
-        """Execute variant-specific secondary fire with its own timing."""
-        lasers: list[Laser] = []
-
-        # Fury: rapid burst between primary shots
-        if self.variant == 1 and self._burst_delay > 0:
-            self._burst_delay -= 1
-            if self._burst_delay == 0 and self._burst_count > 0:
-                self._burst_count -= 1
-                self._burst_delay = 8
-                cx, cy = self._cannon_pos(random.choice([0, 3]))
-                lasers.append(Laser(cx, cy, 7, CYAN, is_enemy=True))
-                if self._burst_count <= 0:
-                    self._burst_delay = 0
-
-        return lasers
-
     def _cannon_pos(self, idx: int) -> tuple[float, float]:
         """Compute the absolute position of cannon *idx*."""
         ox, oy = self.cannon_offsets[idx]
@@ -202,113 +202,131 @@ class Boss:
             self.y + int(self.height * oy),
         )
 
-    # -- TITAN (Boss 0): rotating cannon patterns --
+    # -- TITAN (Boss 0): alternating dual-cannon volleys ----------------
 
     def _fire_titan(self) -> list:
-        """Titan: cycles through 4 sub-patterns -- straight, converging,
-        diverging and concentrated salvos.
+        """Titan: alternates between two simple volley types.
+
+        Phase 0 -- outer cannons (0, 3) fire straight down.
+        Phase 1 -- inner cannons (1, 2) fire slightly converging
+                   towards centre.
+
+        The alternation creates a predictable rhythm the player can
+        learn: dodge the outer shots, then dodge the inner ones.
         """
         lasers: list[Laser] = []
-        self._titano_rotation = (self._titano_rotation + 1) % 4
-
-        if self._titano_rotation == 0:
-            # All 4 cannons fire straight down
-            for i in range(4):
-                cx, cy = self._cannon_pos(i)
-                lasers.append(Laser(cx, cy, 5, ORANGE, is_enemy=True))
-
-        elif self._titano_rotation == 1:
-            # Outer cannons fire converging lasers
-            center_x = self.x + self.width // 2
+        if self._titan_phase == 0:
+            # Outer cannons fire straight down
             for i in (0, 3):
                 cx, cy = self._cannon_pos(i)
-                dx = (center_x - cx) * 0.03
-                lasers.append(Laser(cx, cy, 5, RED, is_enemy=True, vx=dx))
-
-        elif self._titano_rotation == 2:
-            # Inner cannons fire diverging lasers
+                lasers.append(Laser(cx, cy, 5.0, ORANGE, is_enemy=True))
+        else:
+            # Inner cannons fire converging towards screen centre
+            center_x = self.x + self.width / 2
             for i in (1, 2):
                 cx, cy = self._cannon_pos(i)
-                vx = -2.5 if i == 1 else 2.5
-                lasers.append(Laser(cx, cy, 6, YELLOW, is_enemy=True, vx=vx))
+                dx = (center_x - cx) * 0.025
+                lasers.append(Laser(cx, cy, 5.5, RED, is_enemy=True, vx=dx))
 
-        else:
-            # Concentrated salvo aimed at a random X position
-            target_x = random.randint(100, SCREEN_WIDTH - 100)
-            for i in range(4):
-                cx, cy = self._cannon_pos(i)
-                dx = (target_x - cx) * 0.02
-                lasers.append(Laser(cx, cy, 5.5, (255, 130, 50), is_enemy=True, vx=dx))
-
+        self._titan_phase = 1 - self._titan_phase
         return lasers
 
-    # -- FURY (Boss 1): devastating bursts --
+    # -- FURY (Boss 1): staggered burst volleys -------------------------
 
     def _fire_fury(self) -> list:
-        """Fury: triple burst from each side cannon, then triggers a
-        secondary auto-burst sequence.
+        """Fury: fires a 3-shot burst from one side, then switches.
+
+        Each burst fires 3 quick shots from either the left (cannon 0)
+        or right (cannon 3) side.  After a burst completes the side
+        toggles.  The spacing between individual burst shots is 6
+        frames, giving the player time to weave between them.
         """
-        lasers: list[Laser] = []
-        for i in (0, 3):
-            cx, cy = self._cannon_pos(i)
-            for dy in (0, 10, 20):
-                speed = 6 + dy * 0.1
-                lasers.append(Laser(cx, cy + dy, speed, CYAN, is_enemy=True))
+        # Start a new burst
+        self._fury_burst_left = 3
+        self._fury_burst_delay = 0
+        return self._fury_emit_one()
 
-        # Activate secondary burst
-        self._burst_count = 3
-        self._burst_delay = 6
-        return lasers
+    def _fury_burst_tick(self) -> list:
+        """Continue an in-progress Fury burst (called every frame)."""
+        if self._fury_burst_left <= 0:
+            return []
+        self._fury_burst_delay -= 1
+        if self._fury_burst_delay <= 0:
+            return self._fury_emit_one()
+        return []
 
-    # -- FANBLAZE (Boss 2): alternating fan waves --
+    def _fury_emit_one(self) -> list:
+        """Emit a single laser from the active Fury side cannon."""
+        if self._fury_burst_left <= 0:
+            return []
+        cannon_idx = 0 if self._fury_side == 0 else 3
+        cx, cy = self._cannon_pos(cannon_idx)
+        # Slight random spread to add variety but keep it simple
+        vx = random.uniform(-0.4, 0.4)
+        laser = Laser(cx, cy, 6.0, CYAN, is_enemy=True, vx=vx)
+        self._fury_burst_left -= 1
+        self._fury_burst_delay = 6
+        if self._fury_burst_left <= 0:
+            # Burst finished, toggle side for next burst
+            self._fury_side = 1 - self._fury_side
+        return [laser]
+
+    # -- FANBLAZE (Boss 2): slow sweeping pendulum ----------------------
 
     def _fire_fanblaze(self) -> list:
-        """Fanblaze: 7-ray fan with oscillating spread and alternating
-        direction.
+        """Fanblaze: fires 3 parallel lasers that sweep back and forth.
+
+        The spread angle slowly oscillates like a pendulum.  All 3
+        lasers share the same angle so the player only needs to move
+        laterally to avoid them.  The sweep reverses at ±35 degrees.
         """
         lasers: list[Laser] = []
-        center_x = self.x + self.width // 2
+        center_x = self.x + self.width / 2
         center_y = self.y + self.height
 
-        self._fan_wave += 1
-        n_rays = 7
-        spread = 30 + 30 * abs(math.sin(self._fan_wave * 0.3))
+        rad = math.radians(self._fan_angle)
+        vx = math.sin(rad) * 4.0
+        vy = math.cos(rad) * 5.0
 
-        base_angle = self._fan_direction * 10
-        for i in range(n_rays):
-            angle_deg = base_angle + (-spread + (2 * spread / (n_rays - 1)) * i)
-            rad = math.radians(angle_deg)
-            vx = math.sin(rad) * 4.5
-            vy = math.cos(rad) * 5
+        # 3 parallel lasers with small horizontal offset
+        for offset in (-14, 0, 14):
             lasers.append(
-                Laser(center_x - 2, center_y, vy, MAGENTA, is_enemy=True, vx=vx)
+                Laser(center_x + offset - 2, center_y, vy, MAGENTA,
+                      is_enemy=True, vx=vx),
             )
 
-        self._fan_direction *= -1
+        # Advance the pendulum
+        self._fan_angle += self._fan_sweep_speed * self._fan_dir
+        if self._fan_angle > 35:
+            self._fan_angle = 35.0
+            self._fan_dir = -1
+        elif self._fan_angle < -35:
+            self._fan_angle = -35.0
+            self._fan_dir = 1
+
         return lasers
 
-    # -- VORTEX (Boss 3): accelerating spiral arms --
+    # -- VORTEX (Boss 3): double helix spiral ---------------------------
 
     def _fire_vortex(self) -> list:
-        """Vortex: 3 rotating spiral arms that gradually speed up."""
+        """Vortex: two opposite spiral arms rotating at constant speed.
+
+        Two lasers are fired 180 degrees apart, creating a double-helix
+        pattern.  The rotation speed is constant and moderate, so the
+        player can orbit in the same direction to stay safe.
+        """
         lasers: list[Laser] = []
-        center_x = self.x + self.width // 2
+        center_x = self.x + self.width / 2
         center_y = self.y + self.height
 
-        n_arms = 3
-        for arm in range(n_arms):
-            offset = (2 * math.pi / n_arms) * arm
-            angle = self._spiral_angle + offset
-            vx = math.sin(angle) * 3.5
-            vy = math.cos(angle) * 4.0 + 1.5
+        for arm_offset in (0, math.pi):
+            angle = self._helix_angle + arm_offset
+            vx = math.sin(angle) * 3.0
+            vy = math.cos(angle) * 3.5 + 2.0  # bias downward
             lasers.append(
-                Laser(center_x - 2, center_y, vy, GREEN, is_enemy=True, vx=vx)
+                Laser(center_x - 2, center_y, vy, GREEN,
+                      is_enemy=True, vx=vx),
             )
-
-        self._spiral_speed += self._spiral_accel
-        if self._spiral_speed > 1.2:
-            self._spiral_speed = 0.4  # reset
-        self._spiral_angle += self._spiral_speed
 
         return lasers
 
