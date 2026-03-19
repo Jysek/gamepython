@@ -1,12 +1,12 @@
 """
-Caricamento centralizzato degli asset grafici.
+Centralised asset loader.
 
-Tutti gli sprite (navi, nemici, laser, asteroidi, boss, esplosioni, power-up)
-vengono caricati e pre-scalati una sola volta in ``Assets.load()``.
+All sprites (ships, enemies, lasers, asteroids, bosses, explosions,
+power-ups) are loaded and pre-scaled once in ``Assets.load()``.
 
-Le GIF animate (boss, esplosioni, navi giocatore, nemici) vengono
-decomposte in frame individuali tramite Pillow (PIL) e convertite
-in Surface Pygame per il rendering in tempo reale.
+Animated GIFs (bosses, explosions, player ships, enemies) are
+decomposed into individual frames via Pillow (PIL) and converted to
+Pygame Surfaces for real-time rendering.
 """
 
 import os
@@ -20,51 +20,51 @@ from core.constants import (
 )
 
 # ---------------------------------------------------------------------------
-# Dimensioni laser pre-scalati
+# Pre-scaled laser dimensions
 # ---------------------------------------------------------------------------
 _LASER_W = 20
 _LASER_H = 40
 
 # ---------------------------------------------------------------------------
-# Parametri spritesheet scia asteroide (strip orizzontale 12 frame)
+# Asteroid trail spritestrip parameters (horizontal strip, 12 frames)
 # ---------------------------------------------------------------------------
 _TRAIL_FW = 32
 _TRAIL_FH = 32
-_TRAIL_N  = 12
+_TRAIL_N = 12
 
 # ---------------------------------------------------------------------------
-# Bounding-box delle navicelle nel foglio navicelle.gif (3 righe x 4 colonne).
-# Ricavate dall'analisi automatica dei pixel (bg = RGB(29,35,40)).
+# Bounding boxes for player ships in navicelle.gif (3 rows x 4 cols).
+# Computed from automatic pixel analysis (bg = RGB(29, 35, 40)).
 # ---------------------------------------------------------------------------
 _NAV_ROWS = [(30, 284), (316, 571), (603, 857)]
 _NAV_COLS = [(25, 217), (246, 439), (466, 658), (687, 881)]
-_NAV_BG   = (29, 35, 40)
+_NAV_BG = (29, 35, 40)
 
 # ---------------------------------------------------------------------------
-# Bounding-box delle 4 navicelle nemiche in enemy_ships.gif.
-# bg = RGB(255,255,255)
+# Bounding boxes for 4 enemy ships in enemy_ships.gif.
+# bg = RGB(255, 255, 255)
 # ---------------------------------------------------------------------------
 _ENEMY_COLS = [(38, 162), (202, 290), (341, 425), (479, 559)]
-_ENEMY_ROW  = (44, 160)
-_ENEMY_BG   = (255, 255, 255)
+_ENEMY_ROW = (44, 160)
+_ENEMY_BG = (255, 255, 255)
 
 
-def _base() -> str:
-    """Restituisce il percorso della directory radice del progetto."""
+def _project_root() -> str:
+    """Return the absolute path to the project root directory."""
     return os.path.dirname(os.path.abspath(os.path.join(__file__, os.pardir)))
 
 
 def _gif_frames(path: str) -> list[pygame.Surface]:
-    """Decompone una GIF animata nei suoi frame individuali.
+    """Decompose an animated GIF into individual Pygame Surfaces.
 
-    Usa Pillow per leggere ogni frame della GIF, lo converte in RGBA
-    e lo trasforma in una Surface Pygame.
+    Uses Pillow to read each frame, converts it to RGBA, then
+    transforms it into a Pygame Surface.
 
     Args:
-        path: Percorso assoluto del file GIF.
+        path: Absolute path to the GIF file.
 
     Returns:
-        Lista di ``pygame.Surface`` (un frame per elemento).
+        List of ``pygame.Surface`` (one per frame).
     """
     frames: list[pygame.Surface] = []
     gif = Image.open(path)
@@ -77,9 +77,12 @@ def _gif_frames(path: str) -> list[pygame.Surface]:
     return frames
 
 
-def _gif_frames_remove_bg(path: str, bg: tuple[int, int, int],
-                           tolerance: int = 15) -> list[pygame.Surface]:
-    """Come ``_gif_frames`` ma rimuove un colore di sfondo specifico."""
+def _gif_frames_remove_bg(
+    path: str,
+    bg: tuple[int, int, int],
+    tolerance: int = 15,
+) -> list[pygame.Surface]:
+    """Like ``_gif_frames`` but removes a specific background colour."""
     frames: list[pygame.Surface] = []
     gif = Image.open(path)
     for i in range(gif.n_frames):
@@ -90,9 +93,9 @@ def _gif_frames_remove_bg(path: str, bg: tuple[int, int, int],
         for y in range(h):
             for x in range(w):
                 r, g, b, a = pixels[x, y]
-                if (abs(r - bg[0]) < tolerance and
-                    abs(g - bg[1]) < tolerance and
-                    abs(b - bg[2]) < tolerance):
+                if (abs(r - bg[0]) < tolerance
+                        and abs(g - bg[1]) < tolerance
+                        and abs(b - bg[2]) < tolerance):
                     pixels[x, y] = (0, 0, 0, 0)
         data = rgba.tobytes()
         surf = pygame.image.fromstring(data, rgba.size, "RGBA")
@@ -100,27 +103,28 @@ def _gif_frames_remove_bg(path: str, bg: tuple[int, int, int],
     return frames
 
 
-def _spritestrip_frames(path: str) -> list[pygame.Surface]:
-    """Legge un PNG spritestrip orizzontale (frame_h == altezza immagine)."""
-    img = Image.open(path).convert("RGBA")
-    fw = img.height
-    n = img.width // fw
-    frames: list[pygame.Surface] = []
-    for i in range(n):
-        crop = img.crop((i * fw, 0, (i + 1) * fw, fw))
-        data = crop.tobytes()
-        surf = pygame.image.fromstring(data, crop.size, "RGBA")
-        frames.append(surf)
-    return frames
+def _extract_ship_frames_from_gif(
+    gif_path: str,
+    row_bounds: list[tuple[int, int]],
+    col_bounds: list[tuple[int, int]],
+    bg: tuple[int, int, int],
+    tolerance: int = 15,
+) -> list[list[pygame.Surface]]:
+    """Extract animated ship sprites from a grid-based GIF spritesheet.
 
+    Each cell (row, col) in the grid contains one ship with multiple
+    animation frames.  Background pixels are made transparent.
 
-def _extract_ship_frames_from_gif(gif_path: str,
-                                   row_bounds: list[tuple[int, int]],
-                                   col_bounds: list[tuple[int, int]],
-                                   bg: tuple[int, int, int],
-                                   tolerance: int = 15,
-                                   ) -> list[list[pygame.Surface]]:
-    """Estrae le navicelle animate da un foglio GIF a griglia."""
+    Args:
+        gif_path:   Path to the GIF spritesheet.
+        row_bounds: List of (y_start, y_end) for each row.
+        col_bounds: List of (x_start, x_end) for each column.
+        bg:         RGB tuple of the background colour to remove.
+        tolerance:  Colour matching tolerance.
+
+    Returns:
+        Nested list: ships[ship_index][frame_index] -> Surface.
+    """
     gif = Image.open(gif_path)
     n_frames = gif.n_frames
 
@@ -140,9 +144,9 @@ def _extract_ship_frames_from_gif(gif_path: str,
                 for y in range(h):
                     for x in range(w):
                         r, g, b, a = pixels[x, y]
-                        if (abs(r - bg[0]) < tolerance and
-                            abs(g - bg[1]) < tolerance and
-                            abs(b - bg[2]) < tolerance):
+                        if (abs(r - bg[0]) < tolerance
+                                and abs(g - bg[1]) < tolerance
+                                and abs(b - bg[2]) < tolerance):
                             pixels[x, y] = (0, 0, 0, 0)
                 data = cell.tobytes()
                 surf = pygame.image.fromstring(data, cell.size, "RGBA")
@@ -151,13 +155,25 @@ def _extract_ship_frames_from_gif(gif_path: str,
     return ships
 
 
-def _extract_enemy_frames_from_gif(gif_path: str,
-                                    col_bounds: list[tuple[int, int]],
-                                    row_bound: tuple[int, int],
-                                    bg: tuple[int, int, int],
-                                    tolerance: int = 18,
-                                    ) -> list[list[pygame.Surface]]:
-    """Estrae le navicelle nemiche da un foglio GIF (una riga, 4 colonne)."""
+def _extract_enemy_frames_from_gif(
+    gif_path: str,
+    col_bounds: list[tuple[int, int]],
+    row_bound: tuple[int, int],
+    bg: tuple[int, int, int],
+    tolerance: int = 18,
+) -> list[list[pygame.Surface]]:
+    """Extract animated enemy sprites from a single-row GIF spritesheet.
+
+    Args:
+        gif_path:   Path to the GIF spritesheet.
+        col_bounds: List of (x_start, x_end) for each enemy column.
+        row_bound:  (y_start, y_end) for the single row.
+        bg:         RGB tuple of background colour to remove.
+        tolerance:  Colour matching tolerance.
+
+    Returns:
+        Nested list: enemies[type_index][frame_index] -> Surface.
+    """
     gif = Image.open(gif_path)
     n_frames = gif.n_frames
 
@@ -177,9 +193,9 @@ def _extract_enemy_frames_from_gif(gif_path: str,
             for y in range(h):
                 for x in range(w):
                     r, g, b, a = pixels[x, y]
-                    if (abs(r - bg[0]) < tolerance and
-                        abs(g - bg[1]) < tolerance and
-                        abs(b - bg[2]) < tolerance):
+                    if (abs(r - bg[0]) < tolerance
+                            and abs(g - bg[1]) < tolerance
+                            and abs(b - bg[2]) < tolerance):
                         pixels[x, y] = (0, 0, 0, 0)
             data = cell.tobytes()
             surf = pygame.image.fromstring(data, cell.size, "RGBA")
@@ -189,93 +205,134 @@ def _extract_enemy_frames_from_gif(gif_path: str,
 
 
 class Assets:
-    """Contenitore statico per tutti gli asset grafici del gioco."""
+    """Static container for all graphical game assets."""
 
     _loaded: bool = False
 
-    # -- Navi del giocatore (5 tipi, animate) --
+    # -- Player ships (5 types, animated) --
     player_ship_frames: list[list[pygame.Surface]] = []
 
-    # -- Laser (sprite pre-scalati per ciascun tipo di nave) --
-    laser_sprites:       list[pygame.Surface] = []
-    laser_left_angular:  list[pygame.Surface] = []
+    # -- Lasers (pre-scaled sprites per ship type) --
+    laser_sprites: list[pygame.Surface] = []
+    laser_left_angular: list[pygame.Surface] = []
     laser_right_angular: list[pygame.Surface] = []
     enemy_laser_sprite_scaled: pygame.Surface | None = None
 
-    # -- Nemici (4 tipi, animati) --
+    # -- Enemies (4 types, animated) --
     enemy_frames: dict[str, list[pygame.Surface]] = {}
 
-    # -- Asteroide e scia --
+    # -- Asteroid and trail --
     asteroid_sprite: pygame.Surface | None = None
-    trail_frames:    list[pygame.Surface] = []
+    trail_frames: list[pygame.Surface] = []
 
-    # -- Carrier e power-up --
+    # -- Carrier and power-up --
     carrier_sprites: dict[str, pygame.Surface] = {}
     powerup_sprites: dict[str, pygame.Surface] = {}
 
-    # -- Boss varianti (5 boss, ciascuno con lista di frame) --
+    # -- Boss variants (animated frame lists) --
     boss_variant_frames: list[list[pygame.Surface]] = []
 
-    # -- Esplosioni (frame da GIF) --
-    explosion_frames:     list[pygame.Surface] = []
+    # -- Explosions (frames from GIF) --
+    explosion_frames: list[pygame.Surface] = []
     explosion_frames_raw: list[pygame.Surface] = []
 
     @classmethod
     def load(cls) -> None:
-        """Carica tutti gli asset grafici dal disco."""
+        """Load all graphical assets from disk.
+
+        Assets are organised under ``assets/`` with sub-directories:
+        - ``ships/``    -- player ship spritesheets
+        - ``enemies/``  -- enemy spritesheets
+        - ``bosses/``   -- boss GIF animations
+        - ``lasers/``   -- laser sprites (66 PNG variants)
+        - ``powerups/`` -- carrier and power-up sprites
+        - ``sprites/``  -- asteroids and trails
+        - ``effects/``  -- explosion GIF
+        """
         if cls._loaded:
             return
 
-        base = _base()
-        assets_dir = os.path.join(base, "Assets")
-        laser_dir  = os.path.join(base, "LaserSprites")
+        root = _project_root()
+        ships_dir = os.path.join(root, "assets", "ships")
+        enemies_dir = os.path.join(root, "assets", "enemies")
+        bosses_dir = os.path.join(root, "assets", "bosses")
+        lasers_dir = os.path.join(root, "assets", "lasers")
+        powerups_dir = os.path.join(root, "assets", "powerups")
+        sprites_dir = os.path.join(root, "assets", "sprites")
+        effects_dir = os.path.join(root, "assets", "effects")
 
-        def img(name: str, size: tuple[int, int] | None = None) -> pygame.Surface:
-            surf = pygame.image.load(os.path.join(assets_dir, name)).convert_alpha()
+        def _load_img(
+            directory: str,
+            name: str,
+            size: tuple[int, int] | None = None,
+        ) -> pygame.Surface:
+            """Load a single image, optionally rescaling it."""
+            surf = pygame.image.load(
+                os.path.join(directory, name)
+            ).convert_alpha()
             return pygame.transform.scale(surf, size) if size else surf
 
-        def lz(name: str) -> pygame.Surface:
+        def _load_laser(name: str) -> pygame.Surface:
+            """Load and scale a laser sprite to standard size."""
             return pygame.transform.scale(
-                pygame.image.load(os.path.join(laser_dir, name)).convert_alpha(),
+                pygame.image.load(
+                    os.path.join(lasers_dir, name)
+                ).convert_alpha(),
                 (_LASER_W, _LASER_H),
             )
 
         # ==============================================================
-        # NAVI GIOCATORE (5 navi animate da navicelle.gif)
+        # PLAYER SHIPS (5 animated ships from navicelle.gif)
         # ==============================================================
         all_ships = _extract_ship_frames_from_gif(
-            os.path.join(assets_dir, "navicelle.gif"),
+            os.path.join(ships_dir, "navicelle.gif"),
             _NAV_ROWS, _NAV_COLS, _NAV_BG, tolerance=15,
         )
-        # Seleziona 5 navi visivamente distinte dal foglio 3x4
-        # Indici nel foglio: 1, 2, 5, 8, 11 (le migliori visivamente)
+        # Select 5 visually distinct ships from the 3x4 grid
+        # Indices in the sheet: 1, 2, 5, 8, 11
         selected_indices = [1, 2, 5, 8, 11]
         cls.player_ship_frames = []
         for idx in selected_indices:
             if idx < len(all_ships):
                 cls.player_ship_frames.append(all_ships[idx])
             else:
-                # Fallback: usa l'ultimo disponibile
                 cls.player_ship_frames.append(all_ships[-1])
 
         # ==============================================================
-        # LASER
+        # LASERS
         # ==============================================================
-        _base_lasers      = [lz("11.png"), lz("16.png"), lz("12.png")]
-        _base_left_angled = [lz("11LeftAngular.png"), lz("16LeftAngular.png"), lz("12LeftAngular.png")]
-        _base_right_angled = [lz("11RightAngular.png"), lz("16RightAngular.png"), lz("12RightAngular.png")]
-
-        cls.laser_sprites = [_base_lasers[i % 3] for i in range(NUM_PLAYER_SHIPS)]
-        cls.laser_left_angular = [_base_left_angled[i % 3] for i in range(NUM_PLAYER_SHIPS)]
-        cls.laser_right_angular = [_base_right_angled[i % 3] for i in range(NUM_PLAYER_SHIPS)]
-        cls.enemy_laser_sprite_scaled = lz("14.png")
+        base_lasers = [
+            _load_laser("11.png"),
+            _load_laser("16.png"),
+            _load_laser("12.png"),
+        ]
+        base_left_angled = [
+            _load_laser("11LeftAngular.png"),
+            _load_laser("16LeftAngular.png"),
+            _load_laser("12LeftAngular.png"),
+        ]
+        base_right_angled = [
+            _load_laser("11RightAngular.png"),
+            _load_laser("16RightAngular.png"),
+            _load_laser("12RightAngular.png"),
+        ]
+        cls.laser_sprites = [
+            base_lasers[i % 3] for i in range(NUM_PLAYER_SHIPS)
+        ]
+        cls.laser_left_angular = [
+            base_left_angled[i % 3] for i in range(NUM_PLAYER_SHIPS)
+        ]
+        cls.laser_right_angular = [
+            base_right_angled[i % 3] for i in range(NUM_PLAYER_SHIPS)
+        ]
+        cls.enemy_laser_sprite_scaled = _load_laser("14.png")
 
         # ==============================================================
-        # NEMICI (4 tipi animati da enemy_ships.gif)
+        # ENEMIES (4 animated types from enemy_ships.gif)
         # ==============================================================
         enemy_type_names = ["scout", "fighter", "bomber", "elite"]
         raw_enemy = _extract_enemy_frames_from_gif(
-            os.path.join(assets_dir, "enemy_ships.gif"),
+            os.path.join(enemies_dir, "enemy_ships.gif"),
             _ENEMY_COLS, _ENEMY_ROW, _ENEMY_BG, tolerance=18,
         )
         cls.enemy_frames = {}
@@ -286,59 +343,51 @@ class Assets:
             ]
 
         # ==============================================================
-        # ASTEROIDE e scia
+        # ASTEROID & TRAIL
         # ==============================================================
-        cls.asteroid_sprite = img(
-            "asteroid_1_rotondo.png", (ASTEROID_SIZE, ASTEROID_SIZE))
+        cls.asteroid_sprite = _load_img(
+            sprites_dir, "asteroid_1_rotondo.png",
+            (ASTEROID_SIZE, ASTEROID_SIZE),
+        )
 
         sheet = pygame.image.load(
-            os.path.join(assets_dir, "asteroid_trail.png")).convert_alpha()
+            os.path.join(sprites_dir, "asteroid_trail.png")
+        ).convert_alpha()
         cls.trail_frames = []
         for i in range(_TRAIL_N):
             frame = sheet.subsurface(
-                pygame.Rect(i * _TRAIL_FW, 0, _TRAIL_FW, _TRAIL_FH)).copy()
+                pygame.Rect(i * _TRAIL_FW, 0, _TRAIL_FW, _TRAIL_FH)
+            ).copy()
             cls.trail_frames.append(frame)
 
         # ==============================================================
-        # CARRIER e POWER-UP
+        # CARRIERS & POWER-UPS (use dedicated sprites for each type)
         # ==============================================================
         for pt in POWERUP_TYPES:
-            # Bomba riusa lo sprite scudo (colore diverso via tint)
             carrier_file = f"carrier_{pt}.png"
             powerup_file = f"powerup_{pt}.png"
-            carrier_path = os.path.join(assets_dir, carrier_file)
-            powerup_path = os.path.join(assets_dir, powerup_file)
-
-            if os.path.exists(carrier_path):
-                cls.carrier_sprites[pt] = img(carrier_file, (CARRIER_SIZE, CARRIER_SIZE))
-            else:
-                # Fallback: usa carrier_scudo per nuovi tipi
-                cls.carrier_sprites[pt] = img("carrier_scudo.png", (CARRIER_SIZE, CARRIER_SIZE))
-
-            if os.path.exists(powerup_path):
-                cls.powerup_sprites[pt] = img(powerup_file, (POWERUP_ITEM_SIZE, POWERUP_ITEM_SIZE))
-            else:
-                # Fallback: usa powerup_scudo per nuovi tipi
-                cls.powerup_sprites[pt] = img("powerup_scudo.png", (POWERUP_ITEM_SIZE, POWERUP_ITEM_SIZE))
+            cls.carrier_sprites[pt] = _load_img(
+                powerups_dir, carrier_file, (CARRIER_SIZE, CARRIER_SIZE),
+            )
+            cls.powerup_sprites[pt] = _load_img(
+                powerups_dir, powerup_file, (POWERUP_ITEM_SIZE, POWERUP_ITEM_SIZE),
+            )
 
         # ==============================================================
-        # BOSS VARIANTI (5 boss)
+        # BOSS VARIANTS (4 bosses, each an animated GIF)
         # ==============================================================
         boss_files = ["boss.gif", "boss_1.gif", "boss_2.gif", "boss_3.gif"]
         cls.boss_variant_frames = []
         for bf in boss_files:
-            path = os.path.join(assets_dir, bf)
+            path = os.path.join(bosses_dir, bf)
             cls.boss_variant_frames.append(_gif_frames(path))
 
-        # boss_4: spritestrip PNG
-        boss4_path = os.path.join(assets_dir, "boss_4.png")
-        cls.boss_variant_frames.append(_spritestrip_frames(boss4_path))
-
         # ==============================================================
-        # ESPLOSIONI (GIF animata)
+        # EXPLOSIONS (animated GIF)
         # ==============================================================
         cls.explosion_frames_raw = _gif_frames(
-            os.path.join(assets_dir, "explosionGif.gif"))
+            os.path.join(effects_dir, "explosionGif.gif")
+        )
         cls.explosion_frames = [
             pygame.transform.scale(f, (EXPLOSION_SIZE, EXPLOSION_SIZE))
             for f in cls.explosion_frames_raw

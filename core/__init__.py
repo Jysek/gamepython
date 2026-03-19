@@ -1,1 +1,1 @@
-"""Core module -- Costanti, asset, suoni e salvataggio."""
+"""Core package -- constants, assets, sounds, and save management."""

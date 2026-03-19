@@ -1,162 +1,157 @@
 # Space Shooter -- Infinite Survival v2.0
 
-Un videogioco 2D arcade ispirato a Space Invaders, sviluppato in **Python** con **Pygame**.
+A 2D arcade shooter inspired by Space Invaders, developed in **Python** with **Pygame**.
 
-**Progetto di:** Ceccariglia Emanuele & Andrea Cestelli -- ITSUmbria 2026
-
----
-
-## Requisiti
-
-| Dipendenza | Versione minima | Installazione |
-|------------|----------------|---------------|
-| Python     | 3.10+          | [python.org](https://www.python.org) |
-| Pygame     | 2.0+           | `pip install pygame` |
-| Pillow     | 9.0+           | `pip install Pillow` |
+**By:** Ceccariglia Emanuele & Andrea Cestelli -- ITSUmbria 2026
 
 ---
 
-## Avvio rapido
+## Requirements
+
+| Dependency | Minimum version | Install                              |
+|------------|-----------------|--------------------------------------|
+| Python     | 3.10+           | [python.org](https://www.python.org) |
+| Pygame     | 2.0+            | `pip install pygame`                 |
+| Pillow     | 9.0+            | `pip install Pillow`                 |
+
+---
+
+## Quick Start
 
 ```bash
-# Installa le dipendenze
+# Install dependencies
 pip install pygame Pillow
 
-# Avvia il gioco
+# Launch the game
 python main.py
 ```
 
 ---
 
-## Controlli
+## Controls
 
-| Tasto | Azione |
-|-------|--------|
-| `W` / freccia su | Muovi su |
-| `S` / freccia giu | Muovi giu |
-| `A` / freccia sinistra | Muovi sinistra |
-| `D` / freccia destra | Muovi destra |
-| `SPAZIO` | Spara |
-| `B` | Usa bomba |
-| `F` | Abilita' speciale (EMP / Overdrive) |
-| `P` / `ESC` | **Pausa / Riprendi** |
-| `INVIO` | Conferma selezione |
-| `A` / `D` | Scegli nave (selezione navi) |
-
----
-
-## Navicelle (5 giocabili)
-
-Il gioco include **5 navicelle** animate (sprite GIF), ciascuna con **statistiche e abilita' uniche**. Le ultime 2 navi hanno il **doppio cannone**.
-
-| # | Nome | Tipo sparo | Speciale | Sblocco |
-|---|------|-----------|----------|---------|
-| 0 | **Viper** | Cannone singolo | Nessuna | Disponibile |
-| 1 | **Phoenix** | Cannone singolo | Rigenerazione HP | 200 punti |
-| 2 | **Striker** | Cannone singolo | Laser perforanti | 500 punti |
-| 3 | **Nova** | Doppio cannone | EMP (tasto F) | 1000 punti |
-| 4 | **Zenith** | Doppio cannone | Overdrive (tasto F) | 2000 punti |
-
-### Statistiche per nave
-
-| Nave | Velocita' | Rateo fuoco | Danno | Speciale |
-|------|-----------|-------------|-------|----------|
-| Viper | 1.0x | 1.0x | 1 | Nessuna (bilanciata) |
-| Phoenix | 0.8x | 1.3x (lento) | 2 | Rigenera 1 HP ogni 15s |
-| Striker | 1.4x (veloce) | 0.6x (rapido) | 1 | Laser attraversano nemici |
-| Nova | 1.1x | 0.85x | 1 | EMP: cancella laser nemici e stordisce |
-| Zenith | 0.9x | 1.0x | 2 | Overdrive: fuoco rapido 5s (cd 30s) |
-
-Le navi con **doppio cannone** sparano due laser simultanei dai lati. Il power-up *arma* aggiunge laser angolati a tutte le navi.
+| Key                     | Action                              |
+|-------------------------|-------------------------------------|
+| `W` / Arrow Up          | Move up                             |
+| `S` / Arrow Down        | Move down                           |
+| `A` / Arrow Left        | Move left                           |
+| `D` / Arrow Right       | Move right                          |
+| `SPACE`                 | Shoot                               |
+| `B`                     | Use bomb                            |
+| `F`                     | Special ability (EMP / Overdrive)   |
+| `P` / `ESC`             | Pause / Resume                      |
+| `ENTER`                 | Confirm selection                   |
+| `A` / `D`               | Choose ship (ship select screen)    |
 
 ---
 
-## Nemici (4 tipi animati)
+## Ships (5 playable)
 
-I nemici usano **sprite animati** estratti da `enemy_ships.gif`.
+Five animated ships, each with unique stats and abilities.  The last two have a **double cannon**.
 
-| Tipo | HP | Punti | Sparo | Colore |
-|------|----|-------|-------|--------|
-| **Scout** | 1 | 1 | Laser singolo veloce | Rosso |
-| **Fighter** | 2 | 3 | Doppio laser parallelo | Arancio |
-| **Bomber** | 4 | 5 | Laser lento pesante (3 paralleli) | Viola |
-| **Elite** | 3 | 8 | Burst di 3 laser rapidi | Ciano |
+| # | Name        | Cannon       | Special            | Unlock    |
+|---|-------------|--------------|--------------------|-----------|
+| 0 | **Viper**   | Single       | None               | Default   |
+| 1 | **Phoenix** | Single       | HP Regeneration    | 200 pts   |
+| 2 | **Striker** | Single       | Piercing lasers    | 500 pts   |
+| 3 | **Nova**    | Double       | EMP (key F)        | 1 000 pts |
+| 4 | **Zenith**  | Double       | Overdrive (key F)  | 2 000 pts |
 
-### Formazioni intelligenti
-Le formazioni hanno **tipi misti**: nemici deboli (scout) nelle righe frontali e nemici forti (bomber, elite) nelle righe posteriori. La difficolta' controlla quali tipi sono disponibili.
+### Ship Stats
 
-### Hit feedback (nemici multi-HP)
-- **Shake**: oscillazione rapida dello sprite
-- **Mini-esplosione**: piccola esplosione animata al punto d'impatto
-- **Barra HP**: mostra gli HP rimanenti
-
----
-
-## Boss Fight (5 varianti)
-
-Ogni boss ha un'**animazione GIF unica** e un **pattern di sparo esclusivo**. Lo spawn del boss e' **casuale con probabilita' uguale** per ognuno dei 5 boss.
-
-| Variante | Nome | Pattern laser | Descrizione |
-|----------|------|---------------|-------------|
-| 0 | **Titano** | Cannoni rotanti | 4 sub-pattern: dritti, convergenti, divergenti, mirati |
-| 1 | **Furia** | Burst devastanti | Raffica + burst secondario automatico |
-| 2 | **Ventaglio** | Onde a ventaglio | 7 laser con ampiezza e direzione alternata |
-| 3 | **Vortice** | Spirale rotante | 3 bracci che accelerano gradualmente |
-| 4 | **Devastatore** | Muro + onde d'urto | 8-12 proiettili in cono + cerchio di laser periodico |
-
-### Scaling progressivo
-Ad ogni sconfitta le statistiche del boss successivo crescono:
-- +10 HP per boss sconfitto
-- +0.3 velocita' orizzontale
-- -4 frame intervallo sparo (min 22)
-- Bonus punti crescenti
+| Ship    | Speed | Fire Rate    | Damage | Special                        |
+|---------|-------|--------------|--------|--------------------------------|
+| Viper   | 1.0x  | 1.0x         | 1      | Balanced, no special           |
+| Phoenix | 0.8x  | 1.3x (slow)  | 2      | Regen 1 HP every 15 s          |
+| Striker | 1.4x  | 0.6x (fast)  | 1      | Lasers pierce through enemies  |
+| Nova    | 1.1x  | 0.85x        | 1      | EMP: clears enemy lasers       |
+| Zenith  | 0.9x  | 1.0x         | 2      | Overdrive: rapid fire for 5 s  |
 
 ---
 
-## Meccaniche di gioco
+## Enemies (4 animated types)
 
-### Sistema Combo
-Uccidi nemici in rapida successione per accumulare combo:
-- 3+ kill: combo visibile
-- Moltiplicatore punteggio crescente: +50%, +100%, +150%, +200%, +300%
-- Numeri di danno flottanti sullo schermo
+| Type        | HP | Points | Fire pattern               |
+|-------------|----|--------|----------------------------|
+| **Scout**   | 1  | 1      | Fast single laser          |
+| **Fighter** | 2  | 3      | Double parallel lasers     |
+| **Bomber**  | 4  | 5      | Slow triple parallel       |
+| **Elite**   | 3  | 8      | Rapid 3-burst              |
 
-### Bombe
-- Raccogli dal power-up "Bomba" (max 3)
-- Distrugge TUTTI i nemici sullo schermo + cancella laser nemici
-- Danneggia il boss per il 25% degli HP residui
-- Cooldown di 2 secondi tra usi
+### Intelligent Formations
+Formations contain **mixed types**: scouts in the front rows, bombers and elites in the back.  18 formation patterns are available, chosen with an anti-repetition system.
+
+### Hit Feedback (multi-HP enemies)
+- **Shake**: rapid sprite oscillation
+- **Mini-explosion**: animated impact flash
+- **HP bar**: shows remaining health
+
+---
+
+## Boss Fight (4 variants)
+
+Each boss has a unique **animated GIF** and an exclusive **fire pattern**.  Boss selection is **random with equal probability**.
+
+| # | Name          | Pattern                                        |
+|---|---------------|------------------------------------------------|
+| 0 | **Titan**     | Rotating cannons: straight, converging, aimed  |
+| 1 | **Fury**      | Devastating bursts + auto secondary fire       |
+| 2 | **Fanblaze**  | Alternating fan waves with variable spread     |
+| 3 | **Vortex**    | 3 spiral arms that accelerate gradually        |
+
+### Progressive Scaling
+Each successive boss gets stronger:
+- +10 HP per boss defeated
+- +0.3 horizontal speed
+- -4 frames shoot interval (min 22)
+- Increasing score bonus
+
+---
+
+## Game Mechanics
+
+### Combo System
+Kill enemies in rapid succession to build combos:
+- 3+ kills: combo visible
+- Score multiplier: +50 %, +100 %, +150 %, +200 %, +300 %
+- Floating damage numbers on screen
+
+### Bombs
+- Collect from the Bomb power-up (max 3)
+- Destroys ALL enemies on screen and clears enemy lasers
+- Deals 25 % of the boss's remaining HP
+- 2-second cooldown between uses
 
 ### Slow Motion
-- Attivato automaticamente dopo aver sconfitto un boss
-- Rallenta l'azione per un momento drammatico
+- Activates automatically after a boss defeat
+- Slows the action for a dramatic moment
 
-### Sistema di vite e protezione
-- 3 vite massime
-- Invincibilita' temporanea dopo ogni danno
-- Lo scudo assorbe colpi e protegge dal danno
-- L'asteroide con scudo: scudo si rompe ma nessun danno
-- L'asteroide senza scudo: morte istantanea
-
----
-
-## Power-up
-
-I power-up appaiono su **navicelle carrier** che scendono dall'alto e si fermano per 5 secondi.
-
-| Tipo | Effetto | Durata |
-|------|---------|--------|
-| **Vita** | Recupera 1 cuore (max 3) | Istantaneo |
-| **Scudo** | Assorbe colpi nemici e protegge | 5 secondi |
-| **Velocita'** | Boost velocita' x1.8 | 5 secondi |
-| **Arma** | Sparo triplo/quadruplo angolato | 5 secondi |
-| **Bomba** | +1 bomba (max 3) | Permanente |
+### Lives & Protection
+- 3 maximum lives
+- Temporary invincibility after each hit
+- Shield absorbs hits and protects from damage
+- Asteroid with shield: shield breaks, no HP loss
+- Asteroid without shield: instant death
 
 ---
 
-## Formazioni (18 pattern)
+## Power-Ups
 
-Le formazioni sono scelte casualmente con sistema anti-ripetizione:
+Power-ups are carried by **carrier ships** that descend and hover for 5 seconds.
+
+| Type       | Effect                       | Duration    |
+|------------|------------------------------|-------------|
+| **Health** | Restore 1 heart (max 3)     | Instant     |
+| **Shield** | Absorb incoming hits         | 5 seconds   |
+| **Speed**  | Speed boost x1.8             | 5 seconds   |
+| **Weapon** | Triple / quad angled shot    | 5 seconds   |
+| **Bomb**   | +1 bomb (max 3)             | Permanent   |
+
+---
+
+## Formations (18 patterns)
+
+Randomly chosen with anti-repetition:
 
 `H_LINE_3`, `H_LINE_5`, `V_LINE_3`, `GRID_3x2`, `GRID_4x2`, `GRID_3x3`,
 `DIAMOND`, `V_SHAPE`, `CROSS`, `T_SHAPE`, `STAGGER_3x2`,
@@ -164,126 +159,97 @@ Le formazioni sono scelte casualmente con sistema anti-ripetizione:
 
 ---
 
-## Asteroidi
+## Asteroids
 
-- Cadono verticalmente con **scia luminosa realistica** (spritesheet animato)
-- **Indistruttibili** con i laser
-- Collisione senza scudo = **game over immediato**
-- Lo scudo assorbe UN colpo da asteroide
+- Fall vertically with a **luminous trail** (animated spritestrip)
+- **Indestructible** by lasers
+- Collision without shield = **instant death**
+- Shield absorbs ONE asteroid hit
 
-### Pioggia di Asteroidi
-Evento speciale periodico:
-1. **Avviso** di 3 secondi con overlay arancione lampeggiante
-2. Asteroidi piovono fittamente per 20-40 secondi
-3. **Corridoio sicuro garantito**: almeno 100px liberi da asteroidi
+### Asteroid Rain
+Periodic special event:
+1. **3-second warning** with flashing orange overlay
+2. Asteroids rain down for 20--40 seconds
+3. **Guaranteed safe corridor**: at least 100 px clear
 
 ---
 
-## Difficolta' progressiva
+## Progressive Difficulty
 
-Ogni **30 secondi** la difficolta' aumenta (max livello 10):
-- Nemici +12% velocita' per livello
-- Spawn interval ridotto
-- Piu' nemici per ondata
-- Formazioni piu' complesse
-- Tipi nemico piu' forti sbloccati
+Every **30 seconds** the difficulty increases (max level 10):
+- Enemies +12 % speed per level
+- Shorter spawn intervals
+- More enemies per wave
+- More complex formations
+- Stronger enemy types unlocked
 
 ---
 
 ## Audio
 
-Tutti i suoni -- inclusa la **musica di sottofondo** -- vengono generati
-**proceduralmente a runtime** senza file audio esterni.
+All sounds -- including the **background music** -- are generated
+**procedurally at runtime** without any external audio files.
 
 ---
 
-## Salvataggio
+## Save System
 
-Il gioco salva automaticamente in `save_data.json`:
-- Record assoluto (high score)
-- Top 10 punteggi
-- Navicelle sbloccate (5 navi con sblocco progressivo)
-- Statistiche cumulative (tempo, uccisioni, boss sconfitti)
+The game auto-saves to `save_data.json`:
+- All-time high score
+- Top 10 scores
+- Unlocked ships (progressive unlock)
+- Cumulative stats (playtime, kills, bosses defeated)
 
-Il sistema di salvataggio gestisce automaticamente la **migrazione** da versioni precedenti.
+Automatic migration from earlier save formats is supported.
 
 ---
 
-## Struttura del progetto
+## Project Structure
 
 ```
 SpaceShooter/
-|-- main.py                  # Entry point
-|-- save_data.json           # Salvataggio automatico
+|-- main.py                     # Entry point
+|-- save_data.json              # Auto-save file
+|-- .gitignore
 |-- README.md
 |
-|-- core/                    # Infrastruttura condivisa
+|-- core/                       # Shared infrastructure
 |   |-- __init__.py
-|   |-- assets.py            # Caricamento centralizzato (GIF/PNG -> Pygame)
-|   |-- constants.py         # Costanti globali (5 navi, 5 boss, colori, etc.)
-|   |-- save_manager.py      # Salvataggio/caricamento/migrazione JSON
-|   +-- sounds.py            # Audio procedurale + musica di sottofondo
+|   |-- assets.py               # Centralised asset loader (GIF/PNG -> Pygame)
+|   |-- constants.py            # Global constants (ships, bosses, colours, etc.)
+|   |-- save_manager.py         # JSON save / load / migration
+|   +-- sounds.py               # Procedural audio + background music
 |
-|-- entities/                # Entita' di gioco
+|-- entities/                   # Game entities
 |   |-- __init__.py
-|   |-- player.py            # Navicella giocatore (5 navi animate con abilita')
-|   |-- enemy.py             # Nemico con sprite GIF animato + shake
-|   |-- boss.py              # Boss con 5 varianti + pattern laser unici
-|   |-- asteroid.py          # Asteroide con corridoio sicuro
-|   |-- laser.py             # Laser dritto/angolato (supporta vx)
-|   |-- powerup.py           # Carrier + power-up cadenti
-|   |-- explosion.py         # Esplosione animata via GIF
-|   |-- formations.py        # 18 formazioni con anti-ripetizione
-|   +-- formation_group.py   # Gruppo nemici con tipi misti (deboli davanti)
+|   |-- player.py               # Player ship (5 ships, animated, abilities)
+|   |-- enemy.py                # Enemy with animated GIF sprite + shake
+|   |-- boss.py                 # Boss with 4 variants + unique fire patterns
+|   |-- asteroid.py             # Asteroid with safe-corridor logic
+|   |-- laser.py                # Straight / angled laser projectiles
+|   |-- powerup.py              # Carrier + falling power-up items
+|   |-- explosion.py            # Animated explosion from GIF
+|   |-- formations.py           # 18 formations with anti-repetition
+|   +-- formation_group.py      # Enemy group with mixed types (weak front)
 |
 |-- game/
 |   |-- __init__.py
-|   +-- game.py              # Game loop, stati, spawn, collisioni, HUD
+|   +-- game.py                 # Game loop, states, spawning, collisions, HUD
 |
 |-- world/
 |   |-- __init__.py
-|   +-- starfield.py         # Sfondo stellare parallax a 3 livelli
+|   +-- starfield.py            # 3-layer parallax star field
 |
-|-- Assets/                  # Sprite PNG e GIF
-|   |-- navicelle.gif        # Navicelle giocatore (3x4 grid, animate)
-|   |-- enemy_ships.gif      # 4 tipi nemico (1x4 grid, animate)
-|   |-- boss.gif ... boss_4  # 5 varianti boss animate
-|   |-- explosionGif.gif     # Esplosione animata
-|   |-- asteroid_*.png       # Sprite asteroidi
-|   |-- carrier_*.png        # Sprite carrier power-up
-|   +-- powerup_*.png        # Sprite power-up cadenti
-|
-+-- LaserSprites/            # Sprite laser (66 varianti)
++-- assets/                     # Sprites (PNG and GIF)
+    |-- ships/                  # Player ship spritesheets
+    |-- enemies/                # Enemy spritesheets
+    |-- bosses/                 # Boss animated GIFs (4 variants)
+    |-- lasers/                 # 66 laser sprite variants
+    |-- powerups/               # Carrier + power-up sprites
+    |-- sprites/                # Asteroids and trails
+    +-- effects/                # Explosion GIF
 ```
 
 ---
 
-## Changelog
-
-### v2.0 (Release)
-- **5 navicelle giocabili** con statistiche e abilita' uniche
-- Le ultime 2 navi (Nova, Zenith) hanno il **doppio cannone**
-- Punteggi sblocco ribilanciati: 0, 200, 500, 1000, 2000
-- 5 boss con **pattern di sparo unici** e spawn **casuale equo**
-- Formazioni con **tipi misti** (scout davanti, elite dietro)
-- Nuove meccaniche: **bomba**, **EMP**, **piercing**, **overdrive**, **regen**
-- **Slow motion** dopo boss kill
-- **Combo system** con moltiplicatori
-- **Grace period** con countdown (giocatore puo' muoversi)
-- Font e testi ridimensionati per leggibilita'
-- Bug fix critici (grace period, scudo, invincibilita', direzione boss)
-- 45+ test automatizzati superati
-
-### v1.0
-- 12 navicelle giocatore animate con sblocco progressivo
-- 4 tipi di nemici con sprite animati
-- 5 varianti boss con pattern laser unici
-- Sistema combo, screen shake, grace period
-
-### v6.0 (legacy)
-- 15+ formazioni con anti-ripetizione
-- Pioggia asteroidi con corridoio sicuro
-
----
-
-*Sviluppato con Python 3 / Pygame / Pillow -- ITSUmbria 2026*
+*Developed with Python 3 / Pygame / Pillow -- ITSUmbria 2026*

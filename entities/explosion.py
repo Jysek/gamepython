@@ -1,9 +1,9 @@
 """
-Classe Explosion -- effetto esplosione animato tramite GIF.
+Explosion -- animated explosion effect driven by a GIF spritesheet.
 
-L'esplosione viene centrata sul punto (x, y) e riproduce tutti i frame
-della GIF explosionGif.gif. Al termine dell'animazione si disattiva
-automaticamente.
+The explosion is centred on the given (x, y) point and plays through
+all frames of ``explosionGif.gif``.  It deactivates automatically when
+the animation ends.
 """
 
 import pygame
@@ -13,21 +13,20 @@ from core.assets import Assets
 
 
 class Explosion:
-    """Effetto esplosione animato tramite la GIF explosionGif.gif.
+    """Animated explosion effect.
 
     Args:
-        x, y: Centro dell'esplosione (pixel).
-        size: Dimensione in pixel (default EXPLOSION_SIZE = 64).
+        x, y: Centre of the explosion (pixels).
+        size: Rendered size in pixels (default ``EXPLOSION_SIZE``).
     """
 
-    def __init__(self, x, y, size=EXPLOSION_SIZE):
+    def __init__(self, x: float, y: float, size: int = EXPLOSION_SIZE) -> None:
         self.x = x
         self.y = y
         self.size = size
         self.active = True
 
-        # Se la dimensione richiesta e' diversa da quella pre-scalata,
-        # genera al volo i frame alla taglia corretta.
+        # Use pre-scaled frames when the size matches; otherwise scale on the fly
         if size == EXPLOSION_SIZE:
             self.frames = Assets.explosion_frames
         else:
@@ -37,11 +36,11 @@ class Explosion:
             ]
 
         self.frame_index = 0
-        self.frame_delay = 2   # tick di gioco per ogni frame GIF
+        self.frame_delay = 2  # game ticks per GIF frame
         self.frame_timer = 0
 
-    def update(self):
-        """Avanza l'animazione di un tick; disattiva l'esplosione a fine GIF."""
+    def update(self) -> None:
+        """Advance the animation by one tick; deactivate at the last frame."""
         self.frame_timer += 1
         if self.frame_timer >= self.frame_delay:
             self.frame_timer = 0
@@ -49,11 +48,11 @@ class Explosion:
             if self.frame_index >= len(self.frames):
                 self.active = False
 
-    def draw(self, surface):
-        """Disegna il frame corrente centrato su (x, y).
+    def draw(self, surface: pygame.Surface) -> None:
+        """Draw the current frame centred on (x, y).
 
         Args:
-            surface: Surface di destinazione.
+            surface: Destination surface.
         """
         if not self.active:
             return

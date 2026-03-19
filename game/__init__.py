@@ -1,1 +1,1 @@
-"""Game module - Logica principale del gioco e game loop."""
+"""Game package -- main game loop and state management."""
